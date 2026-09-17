@@ -37,6 +37,7 @@ window.FIREBASE_CONFIG = {
   --gold:#C0851C; --gold-soft:#f0e2c2;
   --blue:#2F6E8F;
   --client:#2F6E8F; --designer:#7A5CA6; --contractor:#C4622E;
+  --die-green:#2E9E6A; --die-yellow:#C08A1C; --die-red:#C4462F;
   --money:#B07D18; --quality:#3C8C5A; --time:#4A7FA5; --loss:#C0472F;
   --shadow:0 1px 2px rgba(30,25,15,.06),0 8px 24px rgba(30,25,15,.07);
   --grid:rgba(47,110,143,.05);
@@ -53,6 +54,7 @@ window.FIREBASE_CONFIG = {
     --gold:#E7B24E; --gold-soft:#3a3116;
     --blue:#5AA6CB;
     --client:#54A2C7; --designer:#A98BD4; --contractor:#E1904F;
+    --die-green:#34B87E; --die-yellow:#D19A28; --die-red:#E0573F;
     --money:#E0AC4A; --quality:#57B37E; --time:#69A6D0; --loss:#E36A52;
     --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
     --grid:rgba(90,166,203,.06);
@@ -64,6 +66,7 @@ window.FIREBASE_CONFIG = {
   --gold:#E7B24E; --gold-soft:#3a3116;
   --blue:#5AA6CB;
   --client:#54A2C7; --designer:#A98BD4; --contractor:#E1904F;
+  --die-green:#34B87E; --die-yellow:#D19A28; --die-red:#E0573F;
   --money:#E0AC4A; --quality:#57B37E; --time:#69A6D0; --loss:#E36A52;
   --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
   --grid:rgba(90,166,203,.06);
@@ -173,8 +176,22 @@ label.field>span{font-size:12px;font-weight:600;color:var(--muted);letter-spacin
 .pip{border-radius:50%;background:var(--ink);align-self:center;justify-self:center;width:9px;height:9px;opacity:0}
 .pip.on{opacity:1}
 .die .p-tl{grid-area:1/1}.die .p-tr{grid-area:1/3}.die .p-ml{grid-area:2/1}.die .p-mm{grid-area:2/2}.die .p-mr{grid-area:2/3}.die .p-bl{grid-area:3/1}.die .p-br{grid-area:3/3}
+.die.green{background:var(--die-green);border-color:transparent} .die.yellow{background:var(--die-yellow);border-color:transparent} .die.red{background:var(--die-red);border-color:transparent}
+.die.green .pip,.die.yellow .pip,.die.red .pip{background:#fff}
 .rollout{font-family:var(--ff-mono);font-size:13px;color:var(--muted);text-align:center;margin-top:2px;min-height:18px}
 .rollout b{color:var(--ink)}
+/* dice guide */
+.dcard{border:1px solid var(--line);border-left:6px solid var(--dc,var(--line2));border-radius:11px;padding:11px 13px;margin-top:9px;background:var(--surface)}
+.dcard .dhead{font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dcard .dcost{margin-left:auto;font-family:var(--ff-mono);color:var(--money);font-weight:700}
+.dcard .douts{margin-top:8px;display:flex;gap:8px;flex-wrap:wrap}
+.dcard .dout{font-family:var(--ff-mono);font-size:12.5px;background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:5px 9px}
+.dcard .dout b{color:var(--ink)}
+.dcard.green{--dc:var(--die-green)} .dcard.yellow{--dc:var(--die-yellow)} .dcard.red{--dc:var(--die-red)}
+.dieswatch{width:26px;height:26px;border-radius:7px;background:var(--dc);display:inline-grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,1fr);gap:2px;padding:5px;flex-shrink:0}
+.dieswatch i{background:#fff;border-radius:50%}
+.diepill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted)}
+.diedot{width:13px;height:13px;border-radius:4px;background:var(--dc);display:inline-block}
 
 /* ---------- log / ledger ---------- */
 .ledger{margin-top:14px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
@@ -260,14 +277,21 @@ const COST = {
 const QUALITY_BONUS = 50;   // client: per unit of delivered quality
 const OVERTIME_PEN  = 15;   // per unit of time beyond the phase allowance
 const BIM_DISCOUNT  = 50;   // contractor saving per matched BIM round
+const MIN_PER_SIDE  = 2;    // minimum designers / contractors to start
+const MAX_PER_SIDE  = 10;   // generous cap on team size
 
 const TIER_META = {
   Super:{icon:'★',blurb:'Best odds, priciest'}, Senior:{icon:'◆',blurb:'Balanced'}, Junior:{icon:'▲',blurb:'Cheapest, risky'},
   BIM:{icon:'▣',blurb:'Building Information Modelling'}, CAD:{icon:'▤',blurb:'Computer Aided Design'},
 };
-const dist = (curve)=>{ // human string like "👍3 ⅔ · 👍2 ⅙ · 👍1 ⅙"
-  const q=DESIGN_TIER[curve].q, m={}; q.forEach(v=>m[v]=(m[v]||0)+1);
-  return Object.keys(m).sort((a,b)=>b-a).map(k=>`${k}×${m[k]}/6`).join(' · ');
+// Each choice rolls a coloured die (matches the original board game).
+const DIE_COLOR = { Super:'green', Senior:'yellow', Junior:'red', BIM:'green', CAD:'yellow' };
+const DIE_NAME  = { green:'Green', yellow:'Yellow', red:'Red' };
+const pct = n => (n*100).toFixed(1).replace(/\.0$/,'')+'%';   // 4/6 -> "66.7%", 3/6 -> "50%"
+const dist = (curve,mult)=>{ // e.g. "15: 66.7% · 10: 16.7% · 5: 16.7%"
+  mult=mult||1; const q=DESIGN_TIER[curve].q, m={};
+  q.forEach(v=>{ const k=v*mult; m[k]=(m[k]||0)+1; });
+  return Object.keys(m).map(Number).sort((a,b)=>b-a).map(k=>`${k}: ${pct(m[k]/6)}`).join(' · ');
 };
 
 /* ---- project parameters from the client's construction fee ---- */
@@ -296,6 +320,12 @@ function normalize(s){
   s.appliedActions=s.appliedActions||[];
   ['design','construction'].forEach(k=>{ for(const r in s[k]){ if(s[k][r]&&!s[k][r].rounds) s[k][r].rounds=[]; } });
   for(const r in s.fees){ const f=s.fees[r]; if(f){ f.design=f.design||{proposal:null,agreed:null}; f.construction=f.construction||{proposal:null,agreed:null}; } }
+  // Firebase drops all-null / empty nodes on write, so a fresh round's containers can
+  // come back missing — always restore the CURRENT round's fees/design/construction.
+  const R=s.round||1;
+  s.fees[R]=s.fees[R]||{}; s.fees[R].design=s.fees[R].design||{proposal:null,agreed:null}; s.fees[R].construction=s.fees[R].construction||{proposal:null,agreed:null};
+  s.design[R]=s.design[R]||{rounds:[],delivered:false}; if(!s.design[R].rounds)s.design[R].rounds=[];
+  s.construction[R]=s.construction[R]||{rounds:[],delivered:false}; if(!s.construction[R].rounds)s.construction[R].rounds=[];
   return s;
 }
 
@@ -323,8 +353,8 @@ function reduce(state, a){
       s.roster.designers = s.roster.designers.filter(p=>p.playerId!==playerId);
       s.roster.contractors = s.roster.contractors.filter(p=>p.playerId!==playerId);
       if(role==='client'){ if(!s.roster.client) s.roster.client={playerId,name}; }
-      else if(role==='designer'){ if(s.roster.designers.length<2) s.roster.designers.push({playerId,name}); }
-      else if(role==='contractor'){ if(s.roster.contractors.length<2) s.roster.contractors.push({playerId,name}); }
+      else if(role==='designer'){ if(s.roster.designers.length<MAX_PER_SIDE) s.roster.designers.push({playerId,name}); }
+      else if(role==='contractor'){ if(s.roster.contractors.length<MAX_PER_SIDE) s.roster.contractors.push({playerId,name}); }
       break;
     }
     case 'leave':{
@@ -724,9 +754,9 @@ function Lobby(){
   const seats=STATE.roster;
   const mineIn = me.role && me.role!=='teacher';
   const card=el('div',{class:'card'});
-  card.innerHTML=`<div class="eyebrow"><span class="step">SETUP</span> Take your seat</div>
+  card.innerHTML=`<div class="eyebrow"><span class="step">SETUP</span> ${ROOM?'Group '+ROOM+' · ':''}Take your seat</div>
     <h2>Assemble your project team</h2>
-    <p class="lede">Five roles run one building project. One phone per person — everyone sees the same board update live. Pick the role your TA assigned you.</p>`;
+    <p class="lede">One Client, at least two Designers, and at least two Contractors run the project. One phone per person — everyone sees the same board live. Pick the role your teacher assigned you.</p>`;
   // name field
   const nameF=el('label',{class:'field'},`<span>Your name</span>`);
   const nameI=el('input',{type:'text',placeholder:'e.g. Wei',maxlength:'18',value:esc(me.name||'')});
@@ -735,20 +765,21 @@ function Lobby(){
 
   const roles=el('div',{class:'roles'});
   const defs=[
-    {role:'client',cap:'1',icon:ROLE_ICON.client,name:'Client',desc:'Set the budget & quality bar, then hire and pay both teams.'},
-    {role:'designer',cap:'2',icon:ROLE_ICON.designer,name:'Design Team',desc:'Bid the design fee; deploy architects + BIM/CAD to hit the design quality.'},
-    {role:'contractor',cap:'2',icon:ROLE_ICON.contractor,name:'Contractor',desc:'Bid the build fee; deploy engineers + BIM/CAD to construct.'},
+    {role:'client',need:'1 person',icon:ROLE_ICON.client,name:'Client',desc:'Set the budget & quality bar, then hire and pay both teams.'},
+    {role:'designer',need:'2+ people',icon:ROLE_ICON.designer,name:'Design Team',desc:'Bid the design fee; deploy architects + BIM/CAD to hit the design quality.'},
+    {role:'contractor',need:'2+ people',icon:ROLE_ICON.contractor,name:'Contractor',desc:'Bid the build fee; deploy engineers + BIM/CAD to construct.'},
   ];
   defs.forEach(d=>{
-    const taken = d.role==='client'? (seats.client?1:0) : seats[d.role+'s'].length;
-    const full = d.role==='client'? taken>=1 : taken>=2;
-    const mineHere = d.role==='client'? (seats.client&&seats.client.playerId===me.playerId)
+    const isClient=d.role==='client';
+    const taken = isClient? (seats.client?1:0) : seats[d.role+'s'].length;
+    const full = isClient? taken>=1 : taken>=MAX_PER_SIDE;
+    const mineHere = isClient? (seats.client&&seats.client.playerId===me.playerId)
                     : seats[d.role+'s'].some(p=>p.playerId===me.playerId);
     const b=el('button',{class:'role-opt'});
     b.style.setProperty('--role',ROLE_VAR[d.role]);
     b.innerHTML=`<span class="role-badge">${d.icon}</span>
       <span><span class="rt">${d.name}</span><br><span class="rd">${d.desc}</span></span>
-      <span class="cap">${taken}/${d.cap}${mineHere?'<br><b style="color:var(--role)">you</b>':''}</span>`;
+      <span class="cap">${taken} joined<br><span style="opacity:.8">${d.need}</span>${mineHere?'<br><b style="color:var(--role)">you</b>':''}</span>`;
     b.disabled = full && !mineHere;
     b.onclick=()=>{ if(!me.name){ nameI.focus(); nameI.style.borderColor='var(--loss)'; return;} joinRole(d.role); };
     roles.appendChild(b);
@@ -759,17 +790,17 @@ function Lobby(){
   const seated=[]; if(seats.client)seated.push(['client',seats.client]); seats.designers.forEach(p=>seated.push(['designer',p])); seats.contractors.forEach(p=>seated.push(['contractor',p]));
   if(seated.length){
     const s=el('div',{style:'margin-top:16px'});
-    s.innerHTML=`<div class="subhead">Seated (${seated.length}/5)</div>`;
+    s.innerHTML=`<div class="subhead">Seated · ${seated.length} ${seated.length===1?'person':'people'}</div>`;
     const wrap=el('div',{});
     seated.forEach(([r,p])=>{ const t=el('span',{class:'seat'},`<i></i>${esc(p.name)} · ${ROLE_NAME[r]}`); t.style.setProperty('--role',ROLE_VAR[r]); wrap.appendChild(t); });
     s.appendChild(wrap); card.appendChild(s);
   }
 
   // start / observe
-  const canStart = seats.client && seats.designers.length>=1 && seats.contractors.length>=1;
+  const canStart = !!seats.client && seats.designers.length>=MIN_PER_SIDE && seats.contractors.length>=MIN_PER_SIDE;
   const row=el('div',{class:'btn-row'});
   if(mineIn){
-    const start=el('button',{class:'btn primary'}, canStart?'Start the project ▸':'Waiting for Client, Design & Contractor…');
+    const start=el('button',{class:'btn primary'}, canStart?'Start the project ▸':`Need a Client, ${MIN_PER_SIDE}+ Designers & ${MIN_PER_SIDE}+ Contractors…`);
     start.disabled=!canStart; start.onclick=()=>commit({type:'start'});
     row.appendChild(start);
   }
@@ -779,6 +810,15 @@ function Lobby(){
   card.appendChild(obs);
 
   c.appendChild(card);
+  if(ROOM){
+    const foot=el('div',{class:'fine',style:'margin-top:2px'});
+    foot.innerHTML=`You're in <b>Group ${esc(ROOM)}</b>. In the wrong group?`;
+    const rowf=el('div',{style:'display:flex;gap:16px;justify-content:center;margin-top:6px'});
+    const cg=el('button',{class:'tinylink'},'← Change group'); cg.onclick=()=>leaveRoom();
+    rowf.appendChild(cg);
+    if(SESSION){ const lsb=el('button',{class:'tinylink'},'Leave session'); lsb.onclick=()=>leaveSession(); rowf.appendChild(lsb); }
+    foot.appendChild(rowf); c.appendChild(foot);
+  }
   if(LOCAL){
     const solo=el('div',{class:'card'});
     solo.innerHTML=`<div class="eyebrow"><span class="step">SOLO</span> One device, pass-the-phone</div>
@@ -829,15 +869,27 @@ function ClientPlan(){
 function EV(curve){ const d=DESIGN_TIER[curve]; return { q:d.q.reduce((a,b)=>a+b,0)/6, t:d.t.reduce((a,b)=>a+b,0)/6 }; }
 function fmt1(n){ return String(Math.round(n*10)/10); }
 
-/* read-only reference: price + expected quality/time + quality odds per labor & tool */
-function LaborReference(kind){
+/* Dice guide: each coloured die's joint quality+duration outcomes & chances,
+   plus which labor/tool rolls it and its cost. (Internal to design/contractor.) */
+function swatchDots(){ return '<span class="dieswatch"><i></i><i></i><i></i><i></i></span>'; }
+function DiceGuide(kind){
   const isDesign=kind==='design', cst=isDesign?COST.design:COST.construction, mult=isDesign?1:5;
-  const tl=isDesign?'Architect':'Engineer';
-  const names={Super:'Super '+tl,Senior:'Senior '+tl,Junior:'Junior '+tl};
-  const wrap=el('div',{class:'ledger',style:'margin-top:10px'});
-  const rowsL=['Super','Senior','Junior'].map(t=>{const e=EV(t);return `<tr><td>${TIER_META[t].icon} ${names[t]}</td><td>$${cst[t]}</td><td>${fmt1(e.q*mult)}</td><td>${fmt1(e.t*mult)}</td><td>${dist(t)}</td></tr>`;}).join('');
-  const rowsT=['BIM','CAD'].map(t=>{const e=EV(TOOL_CURVE[t]);return `<tr><td>${TIER_META[t].icon} ${t} tool</td><td>$${cst[t]}</td><td>${fmt1(e.q*mult)}</td><td>${fmt1(e.t*mult)}</td><td>${dist(TOOL_CURVE[t])}</td></tr>`;}).join('');
-  wrap.innerHTML=`<table><thead><tr><th>Labor / tool</th><th>Cost</th><th>E[👍]</th><th>E[⌛]</th><th>Quality odds</th></tr></thead><tbody>${rowsL}${rowsT}</tbody></table>`;
+  const tl=isDesign?'Architect':'Engineer', eng=isDesign?'Architect':'Engineer';
+  // every die has the same three (quality,time) faces; only the odds differ
+  const faces=[[3,1],[2,2],[1,3]];
+  const rows=[
+    {color:'green', used:`Super ${eng} · BIM`, cost:cst.Super, w:[4,1,1]},
+    {color:'yellow',used:`Senior ${eng} · CAD`, cost:cst.Senior, w:[2,2,2]},
+    {color:'red',   used:`Junior ${eng}`,       cost:cst.Junior, w:[1,1,4]},
+  ];
+  const wrap=el('div',{});
+  rows.forEach(r=>{
+    const outs=faces.map(([q,t],i)=>`<span class="dout">👍${q*mult} ⌛${t*mult} <b>${pct(r.w[i]/6)}</b></span>`).join('');
+    const card=el('div',{class:'dcard '+r.color});
+    card.innerHTML=`<div class="dhead">${swatchDots()} ${DIE_NAME[r.color]} die <span style="color:var(--muted);font-weight:600">· ${esc(r.used)}</span><span class="dcost">$${r.cost}</span></div>
+      <div class="douts">${outs}</div>`;
+    wrap.appendChild(card);
+  });
   return wrap;
 }
 
@@ -858,8 +910,8 @@ function BidPlanner(kind,cfg){
   const meetOk=expQ>=demandQ-1e-9;
 
   const c=el('div',{});
-  c.appendChild(el('div',{class:'subhead'},'Reference — price & odds'));
-  c.appendChild(LaborReference(kind));
+  c.appendChild(el('div',{class:'subhead'},'Dice guide — quality 👍 & duration ⌛ odds'));
+  c.appendChild(DiceGuide(kind));
   c.appendChild(el('div',{class:'subhead'},'Plan a combination'));
   const controls=el('div',{style:'display:flex;flex-wrap:wrap;gap:8px;align-items:center'});
   const tierRow=el('div',{class:'pill-tab'});
@@ -930,8 +982,7 @@ function BidScreen(kind){
     if(fee.proposal!=null) c.appendChild(el('div',{class:'waiting'},`<span class="sp"></span> Sent $${fee.proposal} — waiting for the Client to accept.`));
   } else if(amClient){
     c.appendChild(el('div',{class:'kv',style:'margin-top:14px'},`<span class="k">Proposed fee from ${ROLE_NAME[party]}</span><span class="v" style="font-size:18px;color:var(--money)">$${cur}</span>`));
-    c.appendChild(el('p',{class:'lede',style:'margin-top:10px'},`Accept to hire them, or counter. Reference below shows what their work will cost.`));
-    c.appendChild(LaborReference(kind));
+    c.appendChild(el('p',{class:'lede',style:'margin-top:10px'},`Accept to hire them, or make a counter-offer. Remember: you earn $${QUALITY_BONUS} for every unit of quality delivered, so a higher fee can still be worth it.`));
     const f=el('label',{class:'field'},`<span>Counter / agreed fee 💰</span>`);
     const inp=el('input',{type:'number',min:'0',step:'10',value:String(cur)});
     f.appendChild(inp); c.appendChild(f);
@@ -992,8 +1043,7 @@ function CompetitiveBid(kind,R,P,party,baseline,step,isDesign){
     });
     c.appendChild(list);
     if(!bidders.some(p=>bids[p.playerId]!=null)) c.appendChild(el('div',{class:'waiting'},`<span class="sp"></span> Waiting for the ${isDesign?'designers':'contractors'} to submit their bids.`));
-    else c.appendChild(el('div',{class:'note'},'Tip: the cheaper bid saves you money now, but either way you still earn $50 per quality unit — so a pricier, higher-quality bidder can be worth it.'));
-    c.appendChild(LaborReference(kind));
+    else c.appendChild(el('div',{class:'note'},`Tip: the cheaper bid saves you money now, but either way you still earn $${QUALITY_BONUS} per quality unit — so a pricier bidder who delivers more quality can be worth it.`));
     return c;
   }
   return WaitCard(isDesign?'Design bidding':'Build bidding', `The ${isDesign?'designers':'contractors'} are submitting sealed bids; the Client will hire one.`);
@@ -1031,31 +1081,28 @@ function WorkScreen(kind){
   const c=el('div',{class:'card accent'});
   c.innerHTML=`<div class="eyebrow"><span class="step">${step}</span> ${isDesign?'Deliver the design':'Deliver the construction'}</div>
     <h2>Deploy an ${tierLabel} + a tool, then roll</h2>
-    <p class="lede">Each round you hire one ${tierLabel} and one tool. You roll a die for each — the face gives quality 👍 and time ⌛. Reach <b>${demandQ} 👍</b> to pass the quality check. Every ⌛ over ${allowT} costs $${OVERTIME_PEN}.</p>`;
+    <p class="lede">Each round you hire one ${tierLabel} and one tool. Each rolls its own coloured die — the face gives quality 👍 and time ⌛. Reach <b>${demandQ} 👍</b> to pass the quality check. Every ⌛ over ${allowT} costs $${OVERTIME_PEN}.</p>`;
 
+  // dice guide (quality + duration odds per colour)
+  c.appendChild(el('div',{class:'subhead'},'Dice guide — quality 👍 & duration ⌛ odds'));
+  c.appendChild(DiceGuide(kind));
+
+  const dieOpt=(t,name)=>{ const col=DIE_COLOR[t];
+    const o=el('button',{class:'opt','aria-pressed':String((ui.tier===t)||(ui.tool===t))});
+    o.innerHTML=`<span class="oi" style="background:var(--die-${col});color:#fff">${TIER_META[t].icon}</span>
+      <span><span class="on">${name}</span><div class="om">${TIER_META[t].blurb}</div><div class="diepill" style="--dc:var(--die-${col})"><span class="diedot"></span>${DIE_NAME[col]} die</div></span>
+      <span class="ocost">$${cst[t]}</span>`;
+    return o;
+  };
   // choice: tier
   c.appendChild(el('div',{class:'subhead'},`Choose ${tierLabel}`));
   const tg=el('div',{class:'opt-grid'});
-  ['Super','Senior','Junior'].forEach(t=>{
-    const o=el('button',{class:'opt','aria-pressed':String(ui.tier===t)});
-    o.innerHTML=`<span class="oi">${TIER_META[t].icon}</span>
-      <span><span class="on">${tiersName[t]}</span><div class="om">${TIER_META[t].blurb}</div><div class="odist">👍 ${dist(t)}</div></span>
-      <span class="ocost">$${cst[t]}</span>`;
-    o.onclick=()=>{ ui.tier=t; render(); };
-    tg.appendChild(o);
-  });
+  ['Super','Senior','Junior'].forEach(t=>{ const o=dieOpt(t,tiersName[t]); o.onclick=()=>{ui.tier=t;render();}; tg.appendChild(o); });
   c.appendChild(tg);
   // choice: tool
   c.appendChild(el('div',{class:'subhead'},'Choose tool'));
   const tl=el('div',{class:'opt-grid'});
-  ['BIM','CAD'].forEach(t=>{
-    const o=el('button',{class:'opt','aria-pressed':String(ui.tool===t)});
-    o.innerHTML=`<span class="oi">${TIER_META[t].icon}</span>
-      <span><span class="on">${t}</span><div class="om">${TIER_META[t].blurb}</div><div class="odist">👍 ${dist(TOOL_CURVE[t])}</div></span>
-      <span class="ocost">$${cst[t]}</span>`;
-    o.onclick=()=>{ ui.tool=t; render(); };
-    tl.appendChild(o);
-  });
+  ['BIM','CAD'].forEach(t=>{ const o=dieOpt(t,t); o.onclick=()=>{ui.tool=t;render();}; tl.appendChild(o); });
   c.appendChild(tl);
 
   // overhead warning
@@ -1064,11 +1111,12 @@ function WorkScreen(kind){
     c.appendChild(el('div',{class:'note'},`Switching CAD → BIM adds a $${cst.overhead} overhead this round.`));
   }
 
-  // dice area
+  // dice area — coloured to match the chosen combination
+  const tierCol=ui.tier?DIE_COLOR[ui.tier]:'', toolCol=ui.tool?DIE_COLOR[ui.tool]:'';
   const dz=el('div',{class:'dicezone',id:'dz'});
   dz.innerHTML=`
-    <div class="diewrap"><div class="dl">${tierLabel}</div><div class="die" id="dieTier">${pips(1)}</div></div>
-    <div class="diewrap"><div class="dl">tool</div><div class="die" id="dieTool">${pips(1)}</div></div>`;
+    <div class="diewrap"><div class="dl">${ui.tier?DIE_NAME[tierCol]+' · '+tiersName[ui.tier]:tierLabel}</div><div class="die ${tierCol}" id="dieTier">${pips(1)}</div></div>
+    <div class="diewrap"><div class="dl">${ui.tool?DIE_NAME[toolCol]+' · '+ui.tool:'tool'}</div><div class="die ${toolCol}" id="dieTool">${pips(1)}</div></div>`;
   c.appendChild(dz);
   c.appendChild(el('div',{class:'rollout',id:'rollout'}, ui.tier&&ui.tool?`Ready: <b>${tiersName[ui.tier]}</b> + <b>${ui.tool}</b> — cost $${cst[ui.tier]+cst[ui.tool]}`:'Pick an '+tierLabel+' and a tool to roll.'));
 
