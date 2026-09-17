@@ -1,0 +1,1021 @@
+<meta charset="utf-8">
+<title>To BIM or Not To BIM</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<!-- Firebase Realtime Database (compat build) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+/* ============================================================================
+   FIREBASE CONFIG  —  PASTE YOUR OWN KEYS BETWEEN THE QUOTES.
+   Get them from: Firebase console → Project settings → "Your apps" → Web app.
+   You MUST include databaseURL (from Realtime Database, ends in
+   .firebaseio.com or .firebasedatabase.app). Leave as-is to run in solo mode.
+   ========================================================================== */
+window.FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyAoKlaRGdZx6VZPS92lGU4qRRaUar_Zklg",
+  authDomain:        "to-bim-or-not-to-bim.firebaseapp.com",
+  databaseURL:       "https://to-bim-or-not-to-bim-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:         "to-bim-or-not-to-bim",
+  storageBucket:     "to-bim-or-not-to-bim.firebasestorage.app",
+  messagingSenderId: "636814947407",
+  appId:             "1:636814947407:web:639b59f36f4ec123e0a63a"
+};
+</script>
+
+<script type="application/json" id="game-state">
+{"v":3,"phase":"lobby","round":1,"group":"","roster":{"client":null,"designers":[],"contractors":[]},"fees":{},"design":{},"construction":{},"results":{},"appliedActions":[],"updatedAt":0}
+</script>
+
+<style>
+:root{
+  --paper:#F4F1E9; --surface:#FBFAF5; --surface2:#EFEBE0; --ink:#17202A; --muted:#5C6772;
+  --line:#DBD5C7; --line2:#C9C2B0;
+  --gold:#C0851C; --gold-soft:#f0e2c2;
+  --blue:#2F6E8F;
+  --client:#2F6E8F; --designer:#7A5CA6; --contractor:#C4622E;
+  --money:#B07D18; --quality:#3C8C5A; --time:#4A7FA5; --loss:#C0472F;
+  --shadow:0 1px 2px rgba(30,25,15,.06),0 8px 24px rgba(30,25,15,.07);
+  --grid:rgba(47,110,143,.05);
+  --radius:14px;
+  --ff-disp:'Archivo',system-ui,sans-serif;
+  --ff-body:'IBM Plex Sans',system-ui,sans-serif;
+  --ff-mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+:root:not([data-theme="light"]){ }
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#0F161E; --surface:#18222E; --surface2:#1E2A38; --ink:#E7ECF1; --muted:#93A2B2;
+    --line:#293748; --line2:#35485C;
+    --gold:#E7B24E; --gold-soft:#3a3116;
+    --blue:#5AA6CB;
+    --client:#54A2C7; --designer:#A98BD4; --contractor:#E1904F;
+    --money:#E0AC4A; --quality:#57B37E; --time:#69A6D0; --loss:#E36A52;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+    --grid:rgba(90,166,203,.06);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0F161E; --surface:#18222E; --surface2:#1E2A38; --ink:#E7ECF1; --muted:#93A2B2;
+  --line:#293748; --line2:#35485C;
+  --gold:#E7B24E; --gold-soft:#3a3116;
+  --blue:#5AA6CB;
+  --client:#54A2C7; --designer:#A98BD4; --contractor:#E1904F;
+  --money:#E0AC4A; --quality:#57B37E; --time:#69A6D0; --loss:#E36A52;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+  --grid:rgba(90,166,203,.06);
+}
+
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  font-family:var(--ff-body); color:var(--ink); background:var(--paper);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:26px 26px;
+  -webkit-text-size-adjust:100%; line-height:1.5;
+  min-height:100vh;
+}
+.wrap{max-width:760px;margin:0 auto;padding:0 16px 96px;}
+h1,h2,h3{font-family:var(--ff-disp);margin:0;line-height:1.1;text-wrap:balance;letter-spacing:-.01em}
+.mono{font-family:var(--ff-mono);font-variant-numeric:tabular-nums}
+button{font-family:var(--ff-body);cursor:pointer}
+:focus-visible{outline:2.5px solid var(--blue);outline-offset:2px;border-radius:4px}
+
+/* ---------- top bar ---------- */
+.topbar{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--paper) 88%,transparent);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:1px solid var(--line);}
+.topbar-inner{max-width:760px;margin:0 auto;padding:9px 16px;display:flex;align-items:center;gap:10px;}
+.brand{font-family:var(--ff-disp);font-weight:800;font-size:15px;letter-spacing:-.02em;display:flex;align-items:center;gap:7px;white-space:nowrap}
+.brand .bimlogo{font-size:11px;font-weight:800;color:var(--paper);background:var(--ink);padding:2px 6px;border-radius:5px;letter-spacing:.06em}
+.topbar .spacer{flex:1}
+.chip{font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--line2);white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
+.round-badge{font-family:var(--ff-mono);font-weight:700;background:var(--ink);color:var(--paper);padding:3px 9px;border-radius:999px;font-size:11.5px}
+.icon-btn{background:none;border:1px solid var(--line2);border-radius:8px;width:32px;height:32px;display:grid;place-items:center;color:var(--muted);font-size:15px;padding:0}
+.icon-btn:hover{color:var(--ink);border-color:var(--ink)}
+.syncdot{width:8px;height:8px;border-radius:50%;background:var(--quality);box-shadow:0 0 0 3px color-mix(in srgb,var(--quality) 22%,transparent)}
+.syncdot.local{background:var(--muted);box-shadow:0 0 0 3px color-mix(in srgb,var(--muted) 22%,transparent)}
+.syncdot.busy{background:var(--gold);box-shadow:0 0 0 3px color-mix(in srgb,var(--gold) 22%,transparent);animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.4}}
+
+/* ---------- vitals ---------- */
+.vitals{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:14px 0 4px}
+.vital{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 11px;box-shadow:var(--shadow)}
+.vital .lbl{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:4px}
+.vital .val{font-family:var(--ff-mono);font-weight:700;font-size:20px;margin-top:3px;line-height:1}
+.vital .sub{font-size:11px;color:var(--muted);margin-top:3px;font-family:var(--ff-mono)}
+.vital.q .val{color:var(--quality)} .vital.t .val{color:var(--time)} .vital.m .val{color:var(--money)}
+.bar{height:5px;border-radius:3px;background:var(--surface2);margin-top:7px;overflow:hidden}
+.bar>i{display:block;height:100%;border-radius:3px;transition:width .5s cubic-bezier(.2,.8,.2,1)}
+.vital.q .bar>i{background:var(--quality)} .vital.t .bar>i{background:var(--time)}
+
+/* ---------- cards ---------- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);margin-top:14px}
+.card.accent{border-top:3px solid var(--role,var(--gold))}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:7px}
+.eyebrow .step{font-family:var(--ff-mono);color:var(--role,var(--gold))}
+.card h2{font-size:22px;margin:8px 0 4px}
+.lede{color:var(--muted);font-size:14.5px;margin:2px 0 0;max-width:60ch}
+.hr{height:1px;background:var(--line);margin:16px -18px;border:0}
+
+/* ---------- buttons ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line2);
+  background:var(--surface2);color:var(--ink);font-weight:600;font-size:15px;padding:12px 18px;border-radius:11px;transition:.15s;width:100%}
+.btn:hover{border-color:var(--ink)}
+.btn:disabled{opacity:.42;cursor:not-allowed}
+.btn.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.primary:hover{filter:brightness(1.12)}
+.btn.gold{background:var(--gold);color:#231a05;border-color:transparent}
+.btn.role{background:var(--role);color:#fff;border-color:transparent}
+.btn-row{display:flex;gap:10px;margin-top:14px}
+.btn.sm{padding:9px 13px;font-size:13.5px;width:auto}
+
+input,select{font-family:var(--ff-body);font-size:16px;color:var(--ink);background:var(--surface2);
+  border:1px solid var(--line2);border-radius:10px;padding:11px 13px;width:100%}
+label.field{display:block;margin-top:12px}
+label.field>span{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.03em;display:block;margin-bottom:5px}
+
+/* ---------- roles / roster ---------- */
+.roles{display:grid;gap:10px;margin-top:14px}
+.role-opt{display:flex;align-items:center;gap:13px;border:1px solid var(--line2);border-radius:12px;padding:13px 14px;background:var(--surface2);text-align:left;width:100%;transition:.15s}
+.role-opt:hover:not(:disabled){border-color:var(--role);transform:translateY(-1px)}
+.role-opt:disabled{opacity:.5}
+.role-badge{width:42px;height:42px;border-radius:11px;background:var(--role);color:#fff;display:grid;place-items:center;font-size:20px;flex-shrink:0}
+.role-opt .rt{font-family:var(--ff-disp);font-weight:700;font-size:16px}
+.role-opt .rd{font-size:12.5px;color:var(--muted)}
+.role-opt .cap{margin-left:auto;font-size:11.5px;font-family:var(--ff-mono);color:var(--muted);text-align:right}
+.seat{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;background:var(--surface2);border:1px solid var(--line);border-radius:999px;padding:4px 10px;margin:3px 4px 0 0}
+.seat i{width:7px;height:7px;border-radius:50%;background:var(--role)}
+
+/* ---------- choose tiers ---------- */
+.opt-grid{display:grid;gap:9px;margin-top:8px}
+.opt{display:flex;align-items:center;gap:12px;border:1.5px solid var(--line2);border-radius:12px;padding:11px 13px;background:var(--surface);width:100%;text-align:left;transition:.12s}
+.opt:hover{border-color:var(--role)}
+.opt[aria-pressed="true"]{border-color:var(--role);background:color-mix(in srgb,var(--role) 9%,var(--surface));box-shadow:inset 0 0 0 1px var(--role)}
+.opt .oi{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font-size:15px;background:var(--surface2);flex-shrink:0}
+.opt .on{font-weight:600;font-size:14.5px}
+.opt .om{font-size:11.5px;color:var(--muted);font-family:var(--ff-mono)}
+.opt .ocost{margin-left:auto;font-family:var(--ff-mono);font-weight:700;color:var(--money);font-size:14px}
+.opt .odist{font-size:10.5px;color:var(--muted);font-family:var(--ff-mono);margin-top:2px}
+.subhead{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:16px 0 2px}
+
+/* ---------- dice ---------- */
+.dicezone{display:flex;gap:16px;justify-content:center;align-items:center;margin:18px 0 6px;flex-wrap:wrap}
+.diewrap{text-align:center}
+.diewrap .dl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:7px}
+.die{width:66px;height:66px;border-radius:14px;background:var(--surface);border:1px solid var(--line2);
+  box-shadow:var(--shadow),inset 0 -3px 0 rgba(0,0,0,.06);display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);
+  padding:9px;gap:2px}
+.die.rolling{animation:shake .5s linear infinite}
+@keyframes shake{0%,100%{transform:translateY(0) rotate(0)}25%{transform:translateY(-6px) rotate(-8deg)}75%{transform:translateY(-2px) rotate(7deg)}}
+.pip{border-radius:50%;background:var(--ink);align-self:center;justify-self:center;width:9px;height:9px;opacity:0}
+.pip.on{opacity:1}
+.die .p-tl{grid-area:1/1}.die .p-tr{grid-area:1/3}.die .p-ml{grid-area:2/1}.die .p-mm{grid-area:2/2}.die .p-mr{grid-area:2/3}.die .p-bl{grid-area:3/1}.die .p-br{grid-area:3/3}
+.rollout{font-family:var(--ff-mono);font-size:13px;color:var(--muted);text-align:center;margin-top:2px;min-height:18px}
+.rollout b{color:var(--ink)}
+
+/* ---------- log / ledger ---------- */
+.ledger{margin-top:14px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.ledger table{width:100%;border-collapse:collapse;font-size:13px}
+.ledger th{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:700;text-align:right;padding:8px 10px;background:var(--surface2)}
+.ledger th:first-child,.ledger td:first-child{text-align:left}
+.ledger td{padding:8px 10px;border-top:1px solid var(--line);font-family:var(--ff-mono);text-align:right}
+.ledger td .tag{font-family:var(--ff-body);font-size:11px;padding:1px 6px;border-radius:5px;background:var(--surface2);border:1px solid var(--line)}
+.ledger tr.tot td{font-weight:700;background:var(--surface2);border-top:2px solid var(--line2)}
+
+/* ---------- summary ---------- */
+.result-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:14px}
+@media(max-width:560px){.result-grid{grid-template-columns:1fr}}
+.pcard{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--surface);border-top:3px solid var(--role)}
+.pcard .pr{font-family:var(--ff-disp);font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px}
+.pcard .pf{font-family:var(--ff-mono);font-weight:700;font-size:26px;margin-top:8px}
+.pos{color:var(--quality)} .neg{color:var(--loss)}
+.pcard .pl{font-size:11.5px;color:var(--muted);margin-top:3px;font-family:var(--ff-mono)}
+
+.note{font-size:12.5px;color:var(--muted);background:var(--surface2);border:1px solid var(--line);border-left:3px solid var(--gold);border-radius:8px;padding:10px 12px;margin-top:14px}
+.waiting{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:14px;padding:14px;background:var(--surface2);border:1px dashed var(--line2);border-radius:12px;margin-top:14px}
+.waiting .sp{width:15px;height:15px;border:2px solid var(--line2);border-top-color:var(--role,var(--gold));border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.miniboard{display:grid;gap:8px;margin-top:12px}
+.mb-row{display:flex;align-items:center;gap:10px;font-size:13px;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:var(--surface2)}
+.mb-row .mbi{width:26px;height:26px;border-radius:7px;background:var(--role);color:#fff;display:grid;place-items:center;font-size:13px;flex-shrink:0}
+.mb-row .mbv{margin-left:auto;font-family:var(--ff-mono);font-weight:600}
+.tinylink{background:none;border:none;color:var(--blue);font-size:12.5px;text-decoration:underline;padding:6px 0;width:auto}
+.fine{font-size:11.5px;color:var(--muted);text-align:center;margin-top:22px;line-height:1.6}
+.pill-tab{display:inline-flex;background:var(--surface2);border:1px solid var(--line2);border-radius:10px;padding:3px;gap:3px;margin-top:10px}
+.pill-tab button{border:none;background:none;padding:7px 12px;border-radius:8px;font-size:13px;font-weight:600;color:var(--muted);width:auto}
+.pill-tab button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.hero-die{font-size:40px;filter:grayscale(.1)}
+.kv{display:flex;justify-content:space-between;font-size:13.5px;padding:6px 0;border-bottom:1px dashed var(--line)}
+.kv:last-child{border-bottom:0}
+.kv .k{color:var(--muted)} .kv .v{font-family:var(--ff-mono);font-weight:600}
+
+@media(max-width:520px){
+  .topbar-inner{flex-wrap:wrap;padding:8px 12px;gap:7px}
+  #brandtxt{display:none}
+  .wrap{padding:0 12px 90px}
+  .card{padding:15px}
+  .card h2{font-size:19px}
+  .vital .val{font-size:17px}
+  .vitals{gap:7px}
+  .btn-row{flex-direction:column}
+}
+</style>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand"><span class="bimlogo">BIM</span><span id="brandtxt">To BIM or Not To BIM</span></div>
+    <div class="spacer"></div>
+    <span id="tb-extra"></span>
+    <button class="icon-btn" id="themeBtn" title="Toggle light / dark" aria-label="Toggle theme">◑</button>
+  </div>
+</div>
+
+<div class="wrap" id="app"></div>
+
+<script>
+"use strict";
+/* ============================================================================
+   TO BIM OR NOT TO BIM — faithful digital rebuild of the BIM board game.
+   Game constants below are extracted directly from the original template
+   (About Dice / For Client / For Design Team / For Contractor sheets).
+   ========================================================================== */
+
+/* ---- dice: quality & time by die face (1..6) for the DESIGN phase.
+   Construction phase = these values x5 (engineers & tools). ---- */
+const DESIGN_TIER = {
+  Super:  { q:[1,2,3,3,3,3], t:[3,2,1,1,1,1] },   // green die — E[q]=2.5
+  Senior: { q:[1,1,2,2,3,3], t:[3,3,2,2,1,1] },   // yellow die — E[q]=2.0
+  Junior: { q:[1,1,1,1,2,3], t:[3,3,3,3,2,1] },   // red die — E[q]=1.5
+};
+// Tools reuse tier curves: BIM behaves like Super (green), CAD like Senior (yellow).
+const TOOL_CURVE = { BIM:'Super', CAD:'Senior' };
+
+const COST = {
+  design:      { Super:50, Senior:30, Junior:10, BIM:50, CAD:30, overhead:5 },
+  construction:{ Super:250,Senior:150,Junior:50, BIM:250,CAD:150, overhead:25 },
+};
+const QUALITY_BONUS = 50;   // client: per unit of delivered quality
+const OVERTIME_PEN  = 15;   // per unit of time beyond the phase allowance
+const BIM_DISCOUNT  = 50;   // contractor saving per matched BIM round
+
+const TIER_META = {
+  Super:{icon:'★',blurb:'Best odds, priciest'}, Senior:{icon:'◆',blurb:'Balanced'}, Junior:{icon:'▲',blurb:'Cheapest, risky'},
+  BIM:{icon:'▣',blurb:'Building Information Modelling'}, CAD:{icon:'▤',blurb:'Computer Aided Design'},
+};
+const dist = (curve)=>{ // human string like "👍3 ⅔ · 👍2 ⅙ · 👍1 ⅙"
+  const q=DESIGN_TIER[curve].q, m={}; q.forEach(v=>m[v]=(m[v]||0)+1);
+  return Object.keys(m).sort((a,b)=>b-a).map(k=>`${k}×${m[k]}/6`).join(' · ');
+};
+
+/* ---- project parameters from the client's construction fee ---- */
+function makeParams(constructionFee){
+  const budget = Math.round(constructionFee*1.2);
+  const designFeeDefault = budget - constructionFee;          // = 20% of construction
+  const qualityDemand = Math.round(budget/50);
+  const designQ = qualityDemand/6;                            // design-phase quality demand
+  const constructionQ = qualityDemand - designQ;              // construction-phase quality demand
+  return { constructionFee, budget, designFeeDefault, qualityDemand, designQ, constructionQ,
+           timeDemand: qualityDemand, designTimeAllow: designQ, constructionTimeAllow: constructionQ };
+}
+const ROUND_PRESET = { 1:1000, 2:5000 };  // construction fee scale per round (R2 client may raise)
+
+/* ============================ pure reducer ================================ */
+function clone(o){ return o==null?null:JSON.parse(JSON.stringify(o)); }
+
+/* Firebase RTDB drops empty arrays/objects, so restore the full shape on the
+   way in (from a snapshot, localStorage, or the reducer entry). */
+function normalize(s){
+  s = s || {};
+  s.v=s.v||3; s.phase=s.phase||'lobby'; s.round=s.round||1; s.group=s.group||'';
+  s.roster=s.roster||{}; s.roster.client=s.roster.client||null;
+  s.roster.designers=s.roster.designers||[]; s.roster.contractors=s.roster.contractors||[];
+  s.params=s.params||{}; s.fees=s.fees||{}; s.design=s.design||{}; s.construction=s.construction||{}; s.results=s.results||{};
+  s.appliedActions=s.appliedActions||[];
+  ['design','construction'].forEach(k=>{ for(const r in s[k]){ if(s[k][r]&&!s[k][r].rounds) s[k][r].rounds=[]; } });
+  for(const r in s.fees){ const f=s.fees[r]; if(f){ f.design=f.design||{proposal:null,agreed:null}; f.construction=f.construction||{proposal:null,agreed:null}; } }
+  return s;
+}
+
+function ensureRound(s,r){
+  if(!s.fees[r]) s.fees[r]={design:{proposal:null,agreed:null},construction:{proposal:null,agreed:null}};
+  if(!s.fees[r].design) s.fees[r].design={proposal:null,agreed:null};
+  if(!s.fees[r].construction) s.fees[r].construction={proposal:null,agreed:null};
+  if(!s.design[r]) s.design[r]={rounds:[],delivered:false};
+  if(!s.design[r].rounds) s.design[r].rounds=[];
+  if(!s.construction[r]) s.construction[r]={rounds:[],delivered:false};
+  if(!s.construction[r].rounds) s.construction[r].rounds=[];
+}
+
+function reduce(state, a){
+  const base = normalize(clone(state));
+  if(!a || !a.id) return base;
+  if(base.appliedActions.includes(a.id)) return base; // idempotent
+  let s = clone(base);
+  const R = s.round;
+  switch(a.type){
+    case 'join':{
+      const {playerId,name,role}=a;
+      // remove this player from any seat first
+      s.roster.client = s.roster.client && s.roster.client.playerId===playerId ? null : s.roster.client;
+      s.roster.designers = s.roster.designers.filter(p=>p.playerId!==playerId);
+      s.roster.contractors = s.roster.contractors.filter(p=>p.playerId!==playerId);
+      if(role==='client'){ if(!s.roster.client) s.roster.client={playerId,name}; }
+      else if(role==='designer'){ if(s.roster.designers.length<2) s.roster.designers.push({playerId,name}); }
+      else if(role==='contractor'){ if(s.roster.contractors.length<2) s.roster.contractors.push({playerId,name}); }
+      break;
+    }
+    case 'leave':{
+      const {playerId}=a;
+      if(s.roster.client&&s.roster.client.playerId===playerId) s.roster.client=null;
+      s.roster.designers=s.roster.designers.filter(p=>p.playerId!==playerId);
+      s.roster.contractors=s.roster.contractors.filter(p=>p.playerId!==playerId);
+      break;
+    }
+    case 'set_group': s.group=a.name; break;
+    case 'start': if(s.phase==='lobby'){ s.phase='client'; s.round=1; ensureRound(s,1);} break;
+    case 'client_plan':{
+      ensureRound(s,R);
+      s.params = s.params||{};
+      s.params[R]=makeParams(a.constructionFee);
+      // preset design & construction fee proposals to the "fair" defaults
+      s.fees[R].design.proposal   = s.params[R].designFeeDefault;
+      s.fees[R].construction.proposal = s.params[R].constructionFee;
+      s.phase='design_bid';
+      break;
+    }
+    case 'propose_fee':{ ensureRound(s,R); s.fees[R][a.kind].proposal=a.amount; break; }
+    case 'agree_fee':{
+      ensureRound(s,R); s.fees[R][a.kind].agreed=a.amount; s.fees[R][a.kind].proposal=a.amount;
+      if(a.kind==='design') s.phase='design';
+      else s.phase='construction';
+      break;
+    }
+    case 'work_round':{
+      ensureRound(s,R);
+      const isDesign = a.kind==='design';
+      const bank = isDesign ? s.design[R] : s.construction[R];
+      const costs = isDesign ? COST.design : COST.construction;
+      const mult = isDesign ? 1 : 5;
+      const tierCurve = a.tier;                       // Super/Senior/Junior
+      const toolCurve = TOOL_CURVE[a.tool];           // BIM->Super, CAD->Senior
+      const q1=DESIGN_TIER[tierCurve].q[a.tierFace-1]*mult, t1=DESIGN_TIER[tierCurve].t[a.tierFace-1]*mult;
+      const q2=DESIGN_TIER[toolCurve].q[a.toolFace-1]*mult, t2=DESIGN_TIER[toolCurve].t[a.toolFace-1]*mult;
+      const prevTool = bank.rounds.length ? bank.rounds[bank.rounds.length-1].tool : null;
+      const overhead = (a.tool==='BIM' && prevTool==='CAD') ? costs.overhead : 0;
+      bank.rounds.push({ tier:a.tier, tool:a.tool, tierFace:a.tierFace, toolFace:a.toolFace,
+        qual:q1+q2, time:t1+t2, cost:costs[a.tier]+costs[a.tool], overhead });
+      break;
+    }
+    case 'deliver':{
+      ensureRound(s,R);
+      if(a.kind==='design'){ s.design[R].delivered=true; s.phase='contract_bid'; }
+      else { s.construction[R].delivered=true; computeResult(s,R); s.phase='result'; }
+      break;
+    }
+    case 'next_round':{
+      if(R===1){ s.round=2; ensureRound(s,2); s.phase='client'; }
+      else { s.phase='final'; }
+      break;
+    }
+    case 'start_solo':{
+      s.roster={client:{playerId:'solo_c',name:'Client'},designers:[{playerId:'solo_d',name:'Design'}],contractors:[{playerId:'solo_k',name:'Contractor'}]};
+      s.phase='client'; s.round=1; ensureRound(s,1); s.solo=true;
+      break;
+    }
+    case 'reset_game':{
+      s={v:base.v,phase:'lobby',round:1,group:s.group,roster:{client:null,designers:[],contractors:[]},params:{},fees:{},design:{},construction:{},results:{},appliedActions:s.appliedActions,updatedAt:0};
+      break;
+    }
+    default: break;
+  }
+  s.appliedActions = base.appliedActions.concat([a.id]).slice(-60);
+  s.updatedAt = a.ts||0;
+  return s;
+}
+
+function sum(arr,f){ return arr.reduce((n,x)=>n+f(x),0); }
+function computeResult(s,R){
+  const P=s.params[R]; const dr=s.design[R].rounds, cr=s.construction[R].rounds;
+  const designFee=s.fees[R].design.agreed ?? P.designFeeDefault;
+  const constructionFee=s.fees[R].construction.agreed ?? P.constructionFee;
+  const dQ=sum(dr,x=>x.qual), dT=sum(dr,x=>x.time), dCost=sum(dr,x=>x.cost), dOver=sum(dr,x=>x.overhead);
+  const cQ=sum(cr,x=>x.qual), cT=sum(cr,x=>x.time), cCost=sum(cr,x=>x.cost), cOver=sum(cr,x=>x.overhead);
+  const dBIM=dr.filter(x=>x.tool==='BIM').length, cBIM=cr.filter(x=>x.tool==='BIM').length;
+  const bimDiscount=Math.min(dBIM,cBIM)*BIM_DISCOUNT;
+  const totalQ=dQ+cQ, totalT=dT+cT;
+  const designProfit = designFee - dCost - (dT-P.designTimeAllow)*OVERTIME_PEN - dOver;
+  const contractorProfit = constructionFee - cCost - (cT-P.constructionTimeAllow)*OVERTIME_PEN - cOver + bimDiscount;
+  const clientProfit = P.budget - (designFee+constructionFee) + totalQ*QUALITY_BONUS - (totalT-P.timeDemand)*OVERTIME_PEN;
+  s.results[R]={ designFee,constructionFee,dQ,dT,dCost,dOver,cQ,cT,cCost,cOver,bimDiscount,
+    totalQ,totalT,designProfit,contractorProfit,clientProfit };
+}
+
+/* ============================ sync layer (Firebase RTDB) ================== */
+let STATE=null, LOCAL=false, FB=null, DB=null, ROOM=null, roomRef=null;
+const LS_ID='bimgame_identity';
+const LS_STATE='bimgame_state_solo';
+const LS_THEME='bimgame_theme';
+
+let me = loadIdentity();            // {playerId,name,role,room} for THIS device
+let ui = { tier:null, tool:null };  // ephemeral per-device selection (not synced)
+
+function loadIdentity(){
+  try{ const v=JSON.parse(localStorage.getItem(LS_ID)); if(v&&v.playerId) return v; }catch(e){}
+  const id='p'+Math.random().toString(36).slice(2,9);
+  const v={playerId:id,name:'',role:null,room:null}; try{localStorage.setItem(LS_ID,JSON.stringify(v));}catch(e){}
+  return v;
+}
+function saveIdentity(){ try{localStorage.setItem(LS_ID,JSON.stringify(me));}catch(e){} }
+function defaultState(){ return {v:3,phase:'lobby',round:1,group:'',roster:{client:null,designers:[],contractors:[]},params:{},fees:{},design:{},construction:{},results:{},appliedActions:[],updatedAt:0}; }
+
+function configReady(){
+  const c=window.FIREBASE_CONFIG||{};
+  return !!(c.databaseURL && c.databaseURL.indexOf('PASTE')<0 && c.apiKey && c.apiKey.indexOf('PASTE')<0);
+}
+
+async function boot(){
+  applyTheme();
+  document.getElementById('themeBtn').onclick=toggleTheme;
+  if(configReady() && window.firebase){
+    try{
+      FB = firebase.initializeApp(window.FIREBASE_CONFIG);
+      DB = firebase.database();
+      LOCAL=false;
+      DB.ref('.info/connected').on('value', s=>{ const d=document.getElementById('syncdot'); if(d) d.className='syncdot'+(s.val()?'':' local'); });
+      if(me.room){ joinRoom(me.room); return; }
+      STATE=defaultState(); render();        // -> room picker
+      return;
+    }catch(e){ console.warn('Firebase init failed — solo mode.',e); FB=null; }
+  }
+  // ---- solo / local fallback (no config, or SDK blocked) ----
+  LOCAL=true; STATE=defaultState();
+  try{ const ls=JSON.parse(localStorage.getItem(LS_STATE)); if(ls&&ls.v) STATE=normalize(ls); }catch(e){}
+  render();
+}
+
+function normCode(x){ return String(x||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,12); }
+function joinRoom(code){
+  code=normCode(code); if(!code) return;
+  ROOM=code; me.room=code; saveIdentity();
+  if(roomRef) roomRef.off();
+  roomRef = DB.ref('rooms/'+code);
+  roomRef.on('value', snap=>{ STATE = normalize(snap.val() || defaultState()); render(); },
+    err=>{ console.warn('room read failed',err); LOCAL=true; STATE=defaultState(); render(); });
+}
+function leaveRoom(){
+  if(roomRef && STATE && STATE.phase==='lobby'){ commit({type:'leave',playerId:me.playerId}); }
+  if(roomRef){ roomRef.off(); roomRef=null; }
+  ROOM=null; me.room=null; me.role=null; saveIdentity();
+  STATE=defaultState(); render();
+}
+
+function reconcileIdentity(){
+  if(!STATE||!STATE.roster) return;
+  const r=STATE.roster; let role=null;
+  if(r.client&&r.client.playerId===me.playerId) role='client';
+  else if((r.designers||[]).some(p=>p.playerId===me.playerId)) role='designer';
+  else if((r.contractors||[]).some(p=>p.playerId===me.playerId)) role='contractor';
+  else if(me.role==='teacher') role='teacher';
+  if(role!=='teacher') me.role=role; saveIdentity();
+}
+
+function setBusy(b){ const d=document.getElementById('syncdot'); if(d && LOCAL) d.className='syncdot local'; }
+
+function commit(action){
+  if(!action.id) action.id='a'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  if(!action.ts) action.ts=Date.now();
+  if(LOCAL || !roomRef){
+    STATE = reduce(STATE||defaultState(), action);
+    try{ localStorage.setItem(LS_STATE,JSON.stringify(STATE)); }catch(e){}
+    render(); return Promise.resolve();
+  }
+  // Firebase: atomic transaction applies the pure reducer to the latest room state.
+  return roomRef.transaction(cur => reduce(cur || defaultState(), action), (err)=>{ if(err) console.warn('sync tx failed',err); }, false);
+  // the room's onValue listener re-renders every device, including this one.
+}
+
+/* ============================ theme ======================================= */
+function applyTheme(){ let t=null; try{t=localStorage.getItem(LS_THEME);}catch(e){} if(t) document.documentElement.dataset.theme=t; }
+function toggleTheme(){
+  const cur=document.documentElement.dataset.theme;
+  const sysDark=matchMedia('(prefers-color-scheme:dark)').matches;
+  const next = cur ? (cur==='dark'?'light':'dark') : (sysDark?'light':'dark');
+  document.documentElement.dataset.theme=next; try{localStorage.setItem(LS_THEME,next);}catch(e){}
+}
+
+/* ============================ helpers ===================================== */
+const $=(s,e=document)=>e.querySelector(s);
+const el=(tag,attrs,html)=>{ const n=document.createElement(tag); if(attrs) for(const k in attrs){ if(k==='class')n.className=attrs[k]; else if(k.startsWith('on'))n[k]=attrs[k]; else n.setAttribute(k,attrs[k]); } if(html!=null)n.innerHTML=html; return n; };
+const money=n=> (n<0?'−':'')+'$'+Math.abs(Math.round(n));
+const esc=s=> (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const ROLE_ICON={client:'◈',designer:'✎',contractor:'⚒',teacher:'◉'};
+const ROLE_NAME={client:'Client',designer:'Design Team',contractor:'Contractor',teacher:'Teacher / Observer'};
+const ROLE_VAR ={client:'var(--client)',designer:'var(--designer)',contractor:'var(--contractor)',teacher:'var(--muted)'};
+
+function pips(face){ // returns pip layout html for a face 1..6
+  const map={1:['p-mm'],2:['p-tl','p-br'],3:['p-tl','p-mm','p-br'],4:['p-tl','p-tr','p-bl','p-br'],5:['p-tl','p-tr','p-mm','p-bl','p-br'],6:['p-tl','p-tr','p-ml','p-mr','p-bl','p-br']};
+  const all=['p-tl','p-tr','p-ml','p-mm','p-mr','p-bl','p-br'];
+  return all.map(p=>`<span class="pip ${p} ${map[face].includes(p)?'on':''}"></span>`).join('');
+}
+
+/* which party the current phase belongs to (drives solo hotseat) */
+function activeParty(p){ return {client:'client',design_bid:'client',design:'designer',contract_bid:'client',construction:'contractor',result:'client',final:'client'}[p]||'client'; }
+const SOLO = ()=> LOCAL && STATE.solo;
+
+/* ============================ render ====================================== */
+function render(){
+  const app=$('#app'); app.innerHTML='';
+  if(FB && !ROOM){ renderTopExtra(); app.appendChild(RoomPicker()); decorate(); return; }
+  if(SOLO() && me.role!=='teacher' && STATE.phase!=='lobby'){ me.role=activeParty(STATE.phase); }
+  else if(!SOLO()){ reconcileIdentity(); }
+  renderTopExtra();
+  const roleVar = me.role? ROLE_VAR[me.role] : 'var(--gold)';
+  app.style.setProperty('--role', roleVar);
+
+  if(STATE.phase==='lobby' || (!me.role && !SOLO())){ app.appendChild(Lobby()); decorate(); return; }
+  if(me.role==='teacher'){ app.appendChild(Vitals()); app.appendChild(TeacherBoard()); decorate(); return; }
+
+  app.appendChild(Vitals());
+  switch(STATE.phase){
+    case 'client': app.appendChild(ClientPlan()); break;
+    case 'design_bid': app.appendChild(BidScreen('design')); break;
+    case 'design': app.appendChild(WorkScreen('design')); break;
+    case 'contract_bid': app.appendChild(BidScreen('construction')); break;
+    case 'construction': app.appendChild(WorkScreen('construction')); break;
+    case 'result': app.appendChild(ResultScreen(false)); break;
+    case 'final': app.appendChild(ResultScreen(true)); break;
+    default: app.appendChild(el('div',{class:'card'},'Loading…'));
+  }
+  app.appendChild(FooterControls());
+  decorate();
+}
+
+function renderTopExtra(){
+  const box=$('#tb-extra'); box.innerHTML='';
+  if(ROOM){
+    const g=el('span',{class:'chip'},'Group '+ROOM); g.style.borderColor='var(--line2)';
+    box.appendChild(g);
+  }
+  if(STATE.phase!=='lobby'){
+    box.appendChild(el('span',{class:'round-badge'},'Round '+STATE.round));
+  }
+  if(me.role){
+    const c=el('span',{class:'chip'}, (ROLE_ICON[me.role]||'')+' '+(SOLO()&&me.role!=='teacher'?'Now: '+ROLE_NAME[me.role]:ROLE_NAME[me.role]));
+    c.style.borderColor=ROLE_VAR[me.role]; c.style.color=ROLE_VAR[me.role];
+    box.appendChild(c);
+  }
+  box.appendChild(el('span',{class:'syncdot'+(LOCAL?' local':''),id:'syncdot',title:LOCAL?'Solo / local mode':'Live-synced'}));
+}
+
+function Vitals(){
+  const P=STATE.params&&STATE.params[STATE.round];
+  const wrap=el('div',{class:'vitals'});
+  if(!P){ // pre-plan
+    ['Budget','Quality','Time'].forEach(l=>{ wrap.appendChild(el('div',{class:'vital'},`<div class="lbl">${l}</div><div class="val mono">—</div>`)); });
+    return wrap;
+  }
+  const dr=(STATE.design[STATE.round]||{rounds:[]}).rounds, cr=(STATE.construction[STATE.round]||{rounds:[]}).rounds;
+  const qNow=sum(dr,x=>x.qual)+sum(cr,x=>x.qual), tNow=sum(dr,x=>x.time)+sum(cr,x=>x.time);
+  const qPct=Math.min(100, qNow/P.qualityDemand*100), tPct=Math.min(100, tNow/P.timeDemand*100);
+  wrap.appendChild(el('div',{class:'vital m'},`<div class="lbl">◈ Budget</div><div class="val mono">$${P.budget}</div><div class="sub">fee pool to spend</div>`));
+  wrap.appendChild(el('div',{class:'vital q'},`<div class="lbl">👍 Quality</div><div class="val mono">${qNow}<span style="color:var(--muted);font-size:13px"> / ${P.qualityDemand}</span></div><div class="bar"><i style="width:${qPct}%"></i></div>`));
+  wrap.appendChild(el('div',{class:'vital t'},`<div class="lbl">⌛ Time</div><div class="val mono">${tNow}<span style="color:var(--muted);font-size:13px"> / ${P.timeDemand}</span></div><div class="bar"><i style="width:${tPct}%"></i></div>`));
+  return wrap;
+}
+
+/* -------- Room picker (choose a group, live multiplayer) -------- */
+function RoomPicker(){
+  const c=el('div',{});
+  const card=el('div',{class:'card'});
+  card.innerHTML=`<div class="eyebrow"><span class="step">JOIN</span> Live multiplayer</div>
+    <h2>Join your group</h2>
+    <p class="lede">Everyone in the same group shares one live board across their phones. Pick the group number your TA gave you, then choose your role.</p>`;
+  const nameF=el('label',{class:'field'},`<span>Your name</span>`);
+  const nameI=el('input',{type:'text',placeholder:'e.g. Wei',maxlength:'18',value:esc(me.name||'')});
+  nameI.oninput=e=>{ me.name=e.target.value.slice(0,18); saveIdentity(); };
+  nameF.appendChild(nameI); card.appendChild(nameF);
+
+  card.appendChild(el('div',{class:'subhead'},'Choose group'));
+  const grid=el('div',{class:'opt-grid',style:'grid-template-columns:repeat(3,1fr)'});
+  for(let i=1;i<=9;i++){
+    const b=el('button',{class:'opt',style:'justify-content:center;padding:15px 0'},`<span class="on" style="font-family:var(--ff-mono);font-size:17px">Group ${i}</span>`);
+    b.onclick=()=>{ if(!me.name){ nameI.focus(); nameI.style.borderColor='var(--loss)'; return; } joinRoom(String(i)); };
+    grid.appendChild(b);
+  }
+  card.appendChild(grid);
+
+  const cf=el('label',{class:'field'},`<span>…or a custom room code</span>`);
+  const ci=el('input',{type:'text',placeholder:'e.g. DEMO',maxlength:'12'});
+  cf.appendChild(ci); card.appendChild(cf);
+  const cb=el('button',{class:'btn',style:'margin-top:10px'},'Join custom room ▸');
+  cb.onclick=()=>{ if(!me.name){ nameI.focus(); nameI.style.borderColor='var(--loss)'; return; } const code=normCode(ci.value); if(code) joinRoom(code); };
+  card.appendChild(cb);
+  c.appendChild(card);
+
+  const t=el('button',{class:'tinylink',style:'display:block;margin:14px auto 0'},'Just exploring? Try a solo pass-the-phone game');
+  t.onclick=()=>{ LOCAL=true; if(roomRef){roomRef.off();roomRef=null;} ROOM=null; STATE=defaultState(); render(); };
+  c.appendChild(t);
+  return c;
+}
+
+/* -------- Lobby -------- */
+function Lobby(){
+  const c=el('div',{});
+  const seats=STATE.roster;
+  const mineIn = me.role && me.role!=='teacher';
+  const card=el('div',{class:'card'});
+  card.innerHTML=`<div class="eyebrow"><span class="step">SETUP</span> Take your seat</div>
+    <h2>Assemble your project team</h2>
+    <p class="lede">Five roles run one building project. One phone per person — everyone sees the same board update live. Pick the role your TA assigned you.</p>`;
+  // name field
+  const nameF=el('label',{class:'field'},`<span>Your name</span>`);
+  const nameI=el('input',{type:'text',placeholder:'e.g. Wei',maxlength:'18',value:esc(me.name||'')});
+  nameI.oninput=e=>{ me.name=e.target.value.slice(0,18); saveIdentity(); };
+  nameF.appendChild(nameI); card.appendChild(nameF);
+
+  const roles=el('div',{class:'roles'});
+  const defs=[
+    {role:'client',cap:'1',icon:ROLE_ICON.client,name:'Client',desc:'Set the budget & quality bar, then hire and pay both teams.'},
+    {role:'designer',cap:'2',icon:ROLE_ICON.designer,name:'Design Team',desc:'Bid the design fee; deploy architects + BIM/CAD to hit the design quality.'},
+    {role:'contractor',cap:'2',icon:ROLE_ICON.contractor,name:'Contractor',desc:'Bid the build fee; deploy engineers + BIM/CAD to construct.'},
+  ];
+  defs.forEach(d=>{
+    const taken = d.role==='client'? (seats.client?1:0) : seats[d.role+'s'].length;
+    const full = d.role==='client'? taken>=1 : taken>=2;
+    const mineHere = d.role==='client'? (seats.client&&seats.client.playerId===me.playerId)
+                    : seats[d.role+'s'].some(p=>p.playerId===me.playerId);
+    const b=el('button',{class:'role-opt'});
+    b.style.setProperty('--role',ROLE_VAR[d.role]);
+    b.innerHTML=`<span class="role-badge">${d.icon}</span>
+      <span><span class="rt">${d.name}</span><br><span class="rd">${d.desc}</span></span>
+      <span class="cap">${taken}/${d.cap}${mineHere?'<br><b style="color:var(--role)">you</b>':''}</span>`;
+    b.disabled = full && !mineHere;
+    b.onclick=()=>{ if(!me.name){ nameI.focus(); nameI.style.borderColor='var(--loss)'; return;} joinRole(d.role); };
+    roles.appendChild(b);
+  });
+  card.appendChild(roles);
+
+  // seated list
+  const seated=[]; if(seats.client)seated.push(['client',seats.client]); seats.designers.forEach(p=>seated.push(['designer',p])); seats.contractors.forEach(p=>seated.push(['contractor',p]));
+  if(seated.length){
+    const s=el('div',{style:'margin-top:16px'});
+    s.innerHTML=`<div class="subhead">Seated (${seated.length}/5)</div>`;
+    const wrap=el('div',{});
+    seated.forEach(([r,p])=>{ const t=el('span',{class:'seat'},`<i></i>${esc(p.name)} · ${ROLE_NAME[r]}`); t.style.setProperty('--role',ROLE_VAR[r]); wrap.appendChild(t); });
+    s.appendChild(wrap); card.appendChild(s);
+  }
+
+  // start / observe
+  const canStart = seats.client && seats.designers.length>=1 && seats.contractors.length>=1;
+  const row=el('div',{class:'btn-row'});
+  if(mineIn){
+    const start=el('button',{class:'btn primary'}, canStart?'Start the project ▸':'Waiting for Client, Design & Contractor…');
+    start.disabled=!canStart; start.onclick=()=>commit({type:'start'});
+    row.appendChild(start);
+  }
+  card.appendChild(row);
+  const obs=el('button',{class:'tinylink',style:'display:block;margin:12px auto 0'}, me.role==='teacher'?'← leave observer view':'I\'m the teacher — show me the whole board');
+  obs.onclick=()=>{ if(me.role==='teacher'){ me.role=null; saveIdentity(); render(); } else { me.role='teacher'; saveIdentity(); render(); } };
+  card.appendChild(obs);
+
+  c.appendChild(card);
+  if(LOCAL){
+    const solo=el('div',{class:'card'});
+    solo.innerHTML=`<div class="eyebrow"><span class="step">SOLO</span> One device, pass-the-phone</div>
+      <h2 style="font-size:19px">Play all five roles on this screen</h2>
+      <p class="lede">Not live-synced here (opened outside claude.ai, or a preview snapshot). Start a solo game and the board hands the phone to whichever role acts next — perfect for trying the mechanics. Publish on claude.ai for real one-phone-per-person play.</p>`;
+    const b=el('button',{class:'btn gold',style:'margin-top:14px'},'▶ Start solo game');
+    b.onclick=()=>commit({type:'start_solo'});
+    solo.appendChild(b);
+    c.appendChild(solo);
+  }
+  return c;
+}
+function joinRole(role){
+  commit({type:'join',playerId:me.playerId,name:me.name,role});
+  me.role=role; saveIdentity();
+}
+
+/* -------- Client planning -------- */
+function ClientPlan(){
+  const R=STATE.round; const preset=ROUND_PRESET[R];
+  if(me.role!=='client') return WaitCard('The Client is planning the project', 'They\'re setting the budget and quality target for Round '+R+'.');
+  const P=makeParams(preset);
+  const c=el('div',{class:'card accent'});
+  c.innerHTML=`<div class="eyebrow"><span class="step">STEP 1 · ROUND ${R}</span> Plan the project</div>
+    <h2>Set the project scale</h2>
+    <p class="lede">${R===1?'Round one is a warm-up with a fixed brief.':'Round two — you set a bigger scale and both teams will bid competitively.'} Budget is the construction fee plus 20% design fee. Quality demand = budget ÷ 50; time demand matches it.</p>`;
+  const f=el('label',{class:'field'},`<span>Construction fee scale 💰</span>`);
+  const inp=el('input',{type:'number',min:'100',step:'100',value:String(preset)});
+  if(R===1) inp.setAttribute('readonly','');
+  f.appendChild(inp); c.appendChild(f);
+  const prev=el('div',{style:'margin-top:16px'});
+  const draw=(cf)=>{ const p=makeParams(cf); prev.innerHTML=`
+    <div class="kv"><span class="k">Total budget (×1.2)</span><span class="v">$${p.budget}</span></div>
+    <div class="kv"><span class="k">Design fee (baseline)</span><span class="v">$${p.designFeeDefault}</span></div>
+    <div class="kv"><span class="k">Quality demand 👍</span><span class="v">${p.qualityDemand}</span></div>
+    <div class="kv"><span class="k">— design phase / construction</span><span class="v">${p.designQ} / ${p.constructionQ}</span></div>
+    <div class="kv"><span class="k">Time demand ⌛</span><span class="v">${p.timeDemand}</span></div>`; };
+  draw(preset); inp.oninput=e=>draw(Math.max(100,+e.target.value||preset));
+  c.appendChild(prev);
+  const btn=el('button',{class:'btn role',style:'margin-top:16px'},'Lock the brief & call for design bids ▸');
+  btn.onclick=()=>commit({type:'client_plan',constructionFee:R===1?preset:Math.max(100,+inp.value||preset)});
+  c.appendChild(btn);
+  return c;
+}
+
+/* -------- Bidding / negotiation -------- */
+function BidScreen(kind){
+  const R=STATE.round, P=STATE.params[R];
+  const isDesign=kind==='design';
+  const party=isDesign?'designer':'contractor';
+  const fee=STATE.fees[R][kind];
+  const baseline=isDesign?P.designFeeDefault:P.constructionFee;
+  const amProposer = me.role===party;      // team proposes their fee
+  const amClient = me.role==='client';
+  const title = isDesign?'Design fee negotiation':'Construction fee negotiation';
+  const step = isDesign?'STEP 2 · ROUND '+R:'STEP 5 · ROUND '+R;
+
+  const c=el('div',{class:'card accent'});
+  c.innerHTML=`<div class="eyebrow"><span class="step">${step}</span> ${isDesign?'Hire the design team':'Hire the contractor'}</div>
+    <h2>${title}</h2>
+    <p class="lede">The ${ROLE_NAME[party]} names a fee; the Client agrees to pay it. Baseline reference is $${baseline}. ${isDesign?'The design fee is the team\'s revenue — their profit is fee minus what they spend on architects & tools.':'The build fee is the contractor\'s revenue, minus engineers & tools (and a BIM discount if both teams used BIM).'}</p>`;
+
+  const cur = fee.proposal ?? baseline;
+  c.appendChild(el('div',{class:'kv',style:'margin-top:14px'},`<span class="k">Current proposed fee</span><span class="v" style="font-size:18px;color:var(--money)">$${cur}</span>`));
+
+  if(amProposer){
+    const f=el('label',{class:'field'},`<span>Your proposed fee 💰</span>`);
+    const inp=el('input',{type:'number',min:'0',step:'10',value:String(cur)});
+    f.appendChild(inp); c.appendChild(f);
+    const b=el('button',{class:'btn role',style:'margin-top:12px'},'Send proposal to Client');
+    b.onclick=()=>commit({type:'propose_fee',kind,amount:Math.max(0,+inp.value||0)});
+    c.appendChild(b);
+    c.appendChild(el('div',{class:'waiting'},`<span class="sp"></span> Waiting for the Client to accept $${cur}…`));
+  } else if(amClient){
+    c.appendChild(el('p',{class:'lede',style:'margin-top:12px'},`The ${ROLE_NAME[party]} proposes <b>$${cur}</b>. Accept to hire them, or counter.`));
+    const f=el('label',{class:'field'},`<span>Counter / agreed fee 💰</span>`);
+    const inp=el('input',{type:'number',min:'0',step:'10',value:String(cur)});
+    f.appendChild(inp); c.appendChild(f);
+    const row=el('div',{class:'btn-row'});
+    const counter=el('button',{class:'btn'},'Counter-offer');
+    counter.onclick=()=>commit({type:'propose_fee',kind,amount:Math.max(0,+inp.value||0)});
+    const accept=el('button',{class:'btn role'},'Accept & hire ▸');
+    accept.onclick=()=>commit({type:'agree_fee',kind,amount:Math.max(0,+inp.value||cur)});
+    row.appendChild(counter); row.appendChild(accept); c.appendChild(row);
+  } else {
+    return WaitCard(title, `Client and ${ROLE_NAME[party]} are agreeing the fee.`);
+  }
+  return c;
+}
+
+/* -------- Work (deploy + roll) -------- */
+function WorkScreen(kind){
+  const R=STATE.round, P=STATE.params[R];
+  const isDesign=kind==='design';
+  const party=isDesign?'designer':'contractor';
+  const bank=(isDesign?STATE.design:STATE.construction)[R];
+  const demandQ=isDesign?P.designQ:P.constructionQ;
+  const allowT=isDesign?P.designTimeAllow:P.constructionTimeAllow;
+  const doneQ=sum(bank.rounds,x=>x.qual), doneT=sum(bank.rounds,x=>x.time);
+  const met = doneQ>=demandQ;
+  const tierLabel=isDesign?'architect':'engineer';
+  const tiersName={Super:isDesign?'Super Architect':'Super Engineer',Senior:isDesign?'Senior Architect':'Senior Engineer',Junior:isDesign?'Junior Architect':'Junior Engineer'};
+  const cst=isDesign?COST.design:COST.construction;
+  const mult=isDesign?1:5;
+  const step=isDesign?'STEP 3 · ROUND '+R:'STEP 6 · ROUND '+R;
+
+  if(me.role!==party){
+    return WaitCard(`${ROLE_NAME[party]} is ${isDesign?'designing':'building'}`, `They need to reach ${demandQ} 👍 in the ${isDesign?'design':'construction'} phase. So far: ${doneQ}/${demandQ} 👍, ${doneT} ⌛.`, LedgerTable(bank,demandQ,allowT,isDesign));
+  }
+
+  const c=el('div',{class:'card accent'});
+  c.innerHTML=`<div class="eyebrow"><span class="step">${step}</span> ${isDesign?'Deliver the design':'Deliver the construction'}</div>
+    <h2>Deploy an ${tierLabel} + a tool, then roll</h2>
+    <p class="lede">Each round you hire one ${tierLabel} and one tool. You roll a die for each — the face gives quality 👍 and time ⌛. Reach <b>${demandQ} 👍</b> to pass the quality check. Every ⌛ over ${allowT} costs $${OVERTIME_PEN}.</p>`;
+
+  // choice: tier
+  c.appendChild(el('div',{class:'subhead'},`Choose ${tierLabel}`));
+  const tg=el('div',{class:'opt-grid'});
+  ['Super','Senior','Junior'].forEach(t=>{
+    const o=el('button',{class:'opt','aria-pressed':String(ui.tier===t)});
+    o.innerHTML=`<span class="oi">${TIER_META[t].icon}</span>
+      <span><span class="on">${tiersName[t]}</span><div class="om">${TIER_META[t].blurb}</div><div class="odist">👍 ${dist(t)}</div></span>
+      <span class="ocost">$${cst[t]}</span>`;
+    o.onclick=()=>{ ui.tier=t; render(); };
+    tg.appendChild(o);
+  });
+  c.appendChild(tg);
+  // choice: tool
+  c.appendChild(el('div',{class:'subhead'},'Choose tool'));
+  const tl=el('div',{class:'opt-grid'});
+  ['BIM','CAD'].forEach(t=>{
+    const o=el('button',{class:'opt','aria-pressed':String(ui.tool===t)});
+    o.innerHTML=`<span class="oi">${TIER_META[t].icon}</span>
+      <span><span class="on">${t}</span><div class="om">${TIER_META[t].blurb}</div><div class="odist">👍 ${dist(TOOL_CURVE[t])}</div></span>
+      <span class="ocost">$${cst[t]}</span>`;
+    o.onclick=()=>{ ui.tool=t; render(); };
+    tl.appendChild(o);
+  });
+  c.appendChild(tl);
+
+  // overhead warning
+  const prevTool = bank.rounds.length? bank.rounds[bank.rounds.length-1].tool:null;
+  if(ui.tool==='BIM' && prevTool==='CAD'){
+    c.appendChild(el('div',{class:'note'},`Switching CAD → BIM adds a $${cst.overhead} overhead this round.`));
+  }
+
+  // dice area
+  const dz=el('div',{class:'dicezone',id:'dz'});
+  dz.innerHTML=`
+    <div class="diewrap"><div class="dl">${tierLabel}</div><div class="die" id="dieTier">${pips(1)}</div></div>
+    <div class="diewrap"><div class="dl">tool</div><div class="die" id="dieTool">${pips(1)}</div></div>`;
+  c.appendChild(dz);
+  c.appendChild(el('div',{class:'rollout',id:'rollout'}, ui.tier&&ui.tool?`Ready: <b>${tiersName[ui.tier]}</b> + <b>${ui.tool}</b> — cost $${cst[ui.tier]+cst[ui.tool]}`:'Pick an '+tierLabel+' and a tool to roll.'));
+
+  const roll=el('button',{class:'btn gold',style:'margin-top:6px'},'🎲 Deploy & roll');
+  roll.disabled = !(ui.tier&&ui.tool);
+  roll.onclick=()=>doRoll(kind,tiersName);
+  c.appendChild(roll);
+
+  c.appendChild(el('div',{class:'hr'}));
+  // progress + ledger
+  c.appendChild(el('div',{class:'kv'},`<span class="k">Quality so far</span><span class="v" style="color:${met?'var(--quality)':'var(--ink)'}">${doneQ} / ${demandQ} 👍 ${met?'✓ passed':''}</span>`));
+  c.appendChild(el('div',{class:'kv'},`<span class="k">Time so far</span><span class="v">${doneT} ⌛ (allowance ${allowT})</span>`));
+  c.appendChild(el('div',{class:'kv'},`<span class="k">Spent so far</span><span class="v" style="color:var(--money)">$${sum(bank.rounds,x=>x.cost+x.overhead)}</span>`));
+  if(bank.rounds.length) c.appendChild(LedgerTable(bank,demandQ,allowT,isDesign));
+
+  const deliver=el('button',{class:'btn '+(met?'role':''),style:'margin-top:14px'}, met?(isDesign?'Quality met — deliver to Client ▸':'Quality met — hand over the building ▸'):`Reach ${demandQ} 👍 to deliver (need ${Math.max(0,demandQ-doneQ)} more)`);
+  deliver.disabled=!met;
+  deliver.onclick=()=>{ ui.tier=null; ui.tool=null; commit({type:'deliver',kind}); };
+  c.appendChild(deliver);
+  return c;
+}
+
+function LedgerTable(bank,demandQ,allowT,isDesign){
+  const tie=el('div',{class:'ledger'});
+  const rows=bank.rounds.map((r,i)=>`<tr><td>${i+1}. ${r.tier} + ${r.tool}${r.overhead?' <span class="tag">+OH</span>':''}</td>
+    <td>🎲${r.tierFace},${r.toolFace}</td><td>${r.qual}</td><td>${r.time}</td><td>$${r.cost+r.overhead}</td></tr>`).join('');
+  tie.innerHTML=`<table><thead><tr><th>Round</th><th>Dice</th><th>👍</th><th>⌛</th><th>Cost</th></tr></thead>
+    <tbody>${rows}<tr class="tot"><td>Total</td><td></td><td>${sum(bank.rounds,x=>x.qual)}</td><td>${sum(bank.rounds,x=>x.time)}</td><td>$${sum(bank.rounds,x=>x.cost+x.overhead)}</td></tr></tbody></table>`;
+  return tie;
+}
+
+function doRoll(kind,tiersName){
+  const dieT=$('#dieTier'), dieL=$('#dieTool'), out=$('#rollout'), btn=$('#dz').parentNode.querySelector('.btn.gold');
+  const tierFace=1+Math.floor(Math.random()*6), toolFace=1+Math.floor(Math.random()*6);
+  dieT.classList.add('rolling'); dieL.classList.add('rolling'); if(btn)btn.disabled=true;
+  out.innerHTML='Rolling…';
+  let n=0; const iv=setInterval(()=>{ dieT.innerHTML=pips(1+Math.floor(Math.random()*6)); dieL.innerHTML=pips(1+Math.floor(Math.random()*6)); if(++n>8){clearInterval(iv);
+    dieT.classList.remove('rolling'); dieL.classList.remove('rolling');
+    dieT.innerHTML=pips(tierFace); dieL.innerHTML=pips(toolFace);
+    const isDesign=kind==='design', mult=isDesign?1:5;
+    const q=(DESIGN_TIER[ui.tier].q[tierFace-1]+DESIGN_TIER[TOOL_CURVE[ui.tool]].q[toolFace-1])*mult;
+    const t=(DESIGN_TIER[ui.tier].t[tierFace-1]+DESIGN_TIER[TOOL_CURVE[ui.tool]].t[toolFace-1])*mult;
+    out.innerHTML=`Rolled <b>${tierFace}</b> & <b>${toolFace}</b> → <b>+${q} 👍</b>, <b>+${t} ⌛</b>`;
+    setTimeout(()=>commit({type:'work_round',kind,tier:ui.tier,tool:ui.tool,tierFace,toolFace}), 650);
+  } }, 55);
+}
+
+/* -------- Results -------- */
+function ResultScreen(isFinal){
+  const R=STATE.round; const res=STATE.results[R]; const P=STATE.params[R];
+  const c=el('div',{});
+  const head=el('div',{class:'card'});
+  head.innerHTML=`<div class="eyebrow"><span class="step">${isFinal?'FINAL':'STEP 7 · ROUND '+R}</span> Project completion</div>
+    <h2>${isFinal?'Both rounds complete':'Round '+R+' delivered'}</h2>
+    <p class="lede">Quality is rewarded, delays are penalised. ${res.bimDiscount?`BIM paid off: the contractor saved $${res.bimDiscount}.`:''}</p>
+    <div class="kv" style="margin-top:12px"><span class="k">Quality delivered 👍</span><span class="v">${res.totalQ} / ${P.qualityDemand}</span></div>
+    <div class="kv"><span class="k">Time taken ⌛</span><span class="v">${res.totalT} / ${P.timeDemand} ${res.totalT>P.timeDemand?'· <span style="color:var(--loss)">'+(res.totalT-P.timeDemand)+' over</span>':'· on time'}</span></div>
+    <div class="kv"><span class="k">Design fee / Build fee</span><span class="v">$${res.designFee} / $${res.constructionFee}</span></div>`;
+  c.appendChild(head);
+
+  const grid=el('div',{class:'result-grid'});
+  const parties=[
+    ['client','Client',res.clientProfit,`budget − fees + 👍×${QUALITY_BONUS} − overtime`],
+    ['designer','Design Team',res.designProfit,`fee − spend − overtime${res.dOver?' − OH':''}`],
+    ['contractor','Contractor',res.contractorProfit,`fee − spend − overtime${res.bimDiscount?' + BIM $'+res.bimDiscount:''}`],
+  ];
+  parties.forEach(([r,nm,val,form])=>{
+    const p=el('div',{class:'pcard'}); p.style.setProperty('--role',ROLE_VAR[r]);
+    p.innerHTML=`<div class="pr" style="color:${ROLE_VAR[r]}">${ROLE_ICON[r]} ${nm}</div>
+      <div class="pf ${val>=0?'pos':'neg'}">${money(val)}</div>
+      <div class="pl">${form}</div>`;
+    grid.appendChild(p);
+  });
+  c.appendChild(grid);
+
+  // breakdown detail — time term is signed: under the allowance = bonus, over = penalty
+  const sgn=n=>(n>=0?'+ ':'− ')+'$'+Math.abs(Math.round(n));
+  const cT=(P.timeDemand-res.totalT)*OVERTIME_PEN;
+  const dTt=(P.designTimeAllow-res.dT)*OVERTIME_PEN;
+  const kTt=(P.constructionTimeAllow-res.cT)*OVERTIME_PEN;
+  const timeTag=n=> n>0?`<span style="color:var(--quality)">${n} ⌛ early</span>`:(n<0?`<span style="color:var(--loss)">${-n} ⌛ over</span>`:'on time');
+  const det=el('div',{class:'card'});
+  det.innerHTML=`<div class="subhead" style="margin-top:0">Profit breakdown</div>
+    <div class="kv"><span class="k">Client = $${P.budget} − $${res.designFee+res.constructionFee} fees + ${res.totalQ}×$${QUALITY_BONUS} quality ${sgn(cT)} time (${timeTag((P.timeDemand-res.totalT))})</span><span class="v ${res.clientProfit>=0?'pos':'neg'}">${money(res.clientProfit)}</span></div>
+    <div class="kv"><span class="k">Design = $${res.designFee} fee − $${res.dCost} spend ${sgn(dTt)} time ${res.dOver?'− $'+res.dOver+' overhead':''}</span><span class="v ${res.designProfit>=0?'pos':'neg'}">${money(res.designProfit)}</span></div>
+    <div class="kv"><span class="k">Contractor = $${res.constructionFee} fee − $${res.cCost} spend ${sgn(kTt)} time ${res.cOver?'− $'+res.cOver+' overhead ':''}${res.bimDiscount?'+ $'+res.bimDiscount+' BIM':''}</span><span class="v ${res.contractorProfit>=0?'pos':'neg'}">${money(res.contractorProfit)}</span></div>
+    <div class="note" style="margin-top:14px">Finishing under the time allowance earns a bonus; going over costs $${OVERTIME_PEN}/⌛ — exactly as the original scoring sheet computes it.</div>`;
+  c.appendChild(det);
+
+  if(isFinal && STATE.results[1] && STATE.results[2]){
+    const t=el('div',{class:'card'});
+    const r1=STATE.results[1], r2=STATE.results[2];
+    t.innerHTML=`<div class="subhead" style="margin-top:0">Both rounds — total profit</div>
+      <div class="ledger"><table><thead><tr><th>Party</th><th>Round 1</th><th>Round 2</th><th>Total</th></tr></thead><tbody>
+      <tr><td>Client</td><td>${money(r1.clientProfit)}</td><td>${money(r2.clientProfit)}</td><td>${money(r1.clientProfit+r2.clientProfit)}</td></tr>
+      <tr><td>Design Team</td><td>${money(r1.designProfit)}</td><td>${money(r2.designProfit)}</td><td>${money(r1.designProfit+r2.designProfit)}</td></tr>
+      <tr><td>Contractor</td><td>${money(r1.contractorProfit)}</td><td>${money(r2.contractorProfit)}</td><td>${money(r1.contractorProfit+r2.contractorProfit)}</td></tr>
+      </tbody></table></div>`;
+    c.appendChild(t);
+  }
+
+  // advance
+  if(!isFinal){
+    const b=el('button',{class:'btn primary',style:'margin-top:16px'}, R===1?'Continue to Round 2 (competitive bidding) ▸':'See final results ▸');
+    b.onclick=()=>commit({type:'next_round'});
+    c.appendChild(b);
+  } else {
+    c.appendChild(el('div',{class:'note',style:'margin-top:16px'},'That\'s the game. Reflect: did BIM pay off? Who profited most, and why? Try again with a different strategy.'));
+    const b=el('button',{class:'btn',style:'margin-top:12px'},'Play again (new game, same team)');
+    b.onclick=()=>{ if(confirm('Reset to the lobby for a fresh game?')) commit({type:'reset_game'}); };
+    c.appendChild(b);
+  }
+  return c;
+}
+
+/* -------- Teacher / observer board -------- */
+function TeacherBoard(){
+  const c=el('div',{});
+  const R=STATE.round, P=STATE.params&&STATE.params[R];
+  const head=el('div',{class:'card'});
+  head.innerHTML=`<div class="eyebrow"><span class="step">OBSERVER</span> ${STATE.group?esc(STATE.group)+' · ':''}Round ${R}</div>
+    <h2>Whole-board view</h2>
+    <p class="lede">Phase: <b>${phaseName(STATE.phase)}</b>. This view follows every team live — good for projecting.</p>`;
+  c.appendChild(head);
+
+  // roster
+  const rc=el('div',{class:'card'});
+  rc.innerHTML=`<div class="subhead" style="margin-top:0">Team</div>`;
+  const mb=el('div',{class:'miniboard'});
+  const line=(r,label,p)=>{ const row=el('div',{class:'mb-row'}); row.style.setProperty('--role',ROLE_VAR[r]);
+    row.innerHTML=`<span class="mbi">${ROLE_ICON[r]}</span> <b>${label}</b> <span class="mbv">${p?esc(p):'—'}</span>`; return row; };
+  mb.appendChild(line('client','Client',STATE.roster.client&&STATE.roster.client.name));
+  mb.appendChild(line('designer','Design',STATE.roster.designers.map(x=>x.name).join(', ')));
+  mb.appendChild(line('contractor','Contract',STATE.roster.contractors.map(x=>x.name).join(', ')));
+  rc.appendChild(mb); c.appendChild(rc);
+
+  if(P){
+    const dg=STATE.design[R]||{rounds:[]}, cg=STATE.construction[R]||{rounds:[]};
+    const prog=el('div',{class:'card'});
+    prog.innerHTML=`<div class="subhead" style="margin-top:0">Progress</div>
+      <div class="kv"><span class="k">Design 👍</span><span class="v">${sum(dg.rounds,x=>x.qual)} / ${P.designQ} · ⌛ ${sum(dg.rounds,x=>x.time)}</span></div>
+      <div class="kv"><span class="k">Construction 👍</span><span class="v">${sum(cg.rounds,x=>x.qual)} / ${P.constructionQ} · ⌛ ${sum(cg.rounds,x=>x.time)}</span></div>`;
+    if(dg.rounds.length) prog.appendChild(LedgerTable(dg,P.designQ,P.designTimeAllow,true));
+    if(cg.rounds.length) prog.appendChild(LedgerTable(cg,P.constructionQ,P.constructionTimeAllow,false));
+    c.appendChild(prog);
+  }
+  if(STATE.results[R] && (STATE.phase==='result'||STATE.phase==='final')) c.appendChild(ResultScreen(STATE.phase==='final'));
+  return c;
+}
+function phaseName(p){ return {lobby:'Lobby',client:'Client planning',design_bid:'Design bidding',design:'Designing',contract_bid:'Contractor bidding',construction:'Constructing',result:'Round result',final:'Final result'}[p]||p; }
+
+function WaitCard(title,sub,extra){
+  const c=el('div',{class:'card accent'});
+  c.innerHTML=`<div class="eyebrow"><span class="step">ROUND ${STATE.round}</span> Hold tight</div><h2>${title}</h2>`;
+  c.appendChild(el('div',{class:'waiting'},`<span class="sp"></span> ${sub}`));
+  if(extra) c.appendChild(extra);
+  return c;
+}
+
+function FooterControls(){
+  const c=el('div',{class:'fine'});
+  c.innerHTML = SOLO() ? 'Solo pass-the-phone game · one device'
+    : (me.name?`Playing as <b>${esc(me.name)}</b> · ${ROLE_NAME[me.role]}`:'');
+  const row=el('div',{style:'display:flex;gap:14px;justify-content:center;margin-top:6px'});
+  if(!SOLO()){
+    const leave=el('button',{class:'tinylink'},'Change role / leave');
+    leave.onclick=()=>{ commit({type:'leave',playerId:me.playerId}); me.role=null; saveIdentity(); };
+    row.appendChild(leave);
+  }
+  const reset=el('button',{class:'tinylink'},'Reset game');
+  reset.onclick=()=>{ if(confirm('Reset the whole game back to the lobby'+(SOLO()?'':' for everyone in this group')+'?')) commit({type:'reset_game'}); };
+  row.appendChild(reset);
+  if(ROOM){
+    const sw=el('button',{class:'tinylink'},'Switch group');
+    sw.onclick=()=>leaveRoom();
+    row.appendChild(sw);
+  }
+  c.appendChild(row);
+  return c;
+}
+
+function decorate(){ setBusy(false); }
+
+/* boot */
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
+</script>
