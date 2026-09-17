@@ -1,0 +1,462 @@
+<meta charset="utf-8">
+<title>BIM Game — Class Results</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+/* Same Firebase project as the game. */
+window.FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyAoKlaRGdZx6VZPS92lGU4qRRaUar_Zklg",
+  authDomain:        "to-bim-or-not-to-bim.firebaseapp.com",
+  databaseURL:       "https://to-bim-or-not-to-bim-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:         "to-bim-or-not-to-bim",
+  storageBucket:     "to-bim-or-not-to-bim.firebasestorage.app",
+  messagingSenderId: "636814947407",
+  appId:             "1:636814947407:web:639b59f36f4ec123e0a63a"
+};
+</script>
+
+<style>
+:root{
+  --paper:#F4F1E9; --surface:#FBFAF5; --surface2:#EFEBE0; --ink:#17202A; --muted:#5C6772;
+  --line:#DBD5C7; --line2:#C9C2B0; --gold:#B07D18;
+  --client:#2372B0; --designer:#009E73; --contractor:#D55E00;   /* CVD-validated (both themes) */
+  --bim:#009E73; --cad:#D55E00; --quality:#009E73; --time:#2372B0; --loss:#C0472F; --pos:#1F7A4D;
+  --grid:rgba(47,110,143,.05); --gridline:rgba(90,100,110,.16);
+  --shadow:0 1px 2px rgba(30,25,15,.06),0 8px 24px rgba(30,25,15,.07);
+  --ff-disp:'Archivo',system-ui,sans-serif; --ff-body:'IBM Plex Sans',system-ui,sans-serif; --ff-mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --paper:#0F161E; --surface:#18222E; --surface2:#1E2A38; --ink:#E7ECF1; --muted:#93A2B2;
+  --line:#293748; --line2:#35485C; --gold:#E7B24E;
+  --client:#2372B0; --designer:#009E73; --contractor:#D55E00;
+  --bim:#009E73; --cad:#D55E00; --quality:#12B57F; --time:#4A9BD4; --loss:#E36A52; --pos:#2FBE8A;
+  --grid:rgba(90,166,203,.06); --gridline:rgba(150,170,190,.16);
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.4);
+}}
+:root[data-theme="dark"]{
+  --paper:#0F161E; --surface:#18222E; --surface2:#1E2A38; --ink:#E7ECF1; --muted:#93A2B2;
+  --line:#293748; --line2:#35485C; --gold:#E7B24E;
+  --client:#2372B0; --designer:#009E73; --contractor:#D55E00;
+  --bim:#009E73; --cad:#D55E00; --quality:#12B57F; --time:#4A9BD4; --loss:#E36A52; --pos:#2FBE8A;
+  --grid:rgba(90,166,203,.06); --gridline:rgba(150,170,190,.16);
+}
+*{box-sizing:border-box} html,body{margin:0}
+body{font-family:var(--ff-body);color:var(--ink);background:var(--paper);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:30px 30px;
+  -webkit-text-size-adjust:100%;min-height:100vh}
+.wrap{max-width:1180px;margin:0 auto;padding:0 20px 60px}
+h1,h2,h3{font-family:var(--ff-disp);margin:0;line-height:1.05;letter-spacing:-.01em}
+.mono{font-family:var(--ff-mono);font-variant-numeric:tabular-nums}
+button{font-family:var(--ff-body);cursor:pointer}
+:focus-visible{outline:3px solid var(--time);outline-offset:2px;border-radius:4px}
+
+/* header */
+.top{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--paper) 90%,transparent);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.top-in{max-width:1180px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.brand{font-family:var(--ff-disp);font-weight:800;font-size:19px;display:flex;align-items:center;gap:9px}
+.bimlogo{font-size:12px;font-weight:800;color:var(--paper);background:var(--ink);padding:3px 7px;border-radius:6px;letter-spacing:.06em}
+.top .sp{flex:1}
+.seg{display:inline-flex;background:var(--surface2);border:1px solid var(--line2);border-radius:11px;padding:3px;gap:2px}
+.seg button{border:none;background:none;padding:8px 14px;border-radius:8px;font-size:14px;font-weight:600;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.icon-btn{background:none;border:1px solid var(--line2);border-radius:9px;height:38px;padding:0 12px;display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-weight:600;font-size:13px}
+.icon-btn:hover{color:var(--ink);border-color:var(--ink)}
+.live{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--muted)}
+.live i{width:9px;height:9px;border-radius:50%;background:var(--muted);box-shadow:0 0 0 3px color-mix(in srgb,var(--muted) 22%,transparent)}
+.live.on i{background:var(--pos);box-shadow:0 0 0 3px color-mix(in srgb,var(--pos) 24%,transparent);animation:pulse 1.6s infinite}
+@keyframes pulse{50%{opacity:.45}}
+
+/* tabs */
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0 4px}
+.tab{border:1px solid var(--line2);background:var(--surface);border-radius:11px;padding:11px 18px;font-weight:700;font-size:15px;color:var(--muted);font-family:var(--ff-disp)}
+.tab[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+
+/* cards + tiles */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:var(--shadow);margin-top:18px}
+.card h2{font-size:22px} .card .cap{color:var(--muted);font-size:14px;margin-top:4px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-top:18px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;box-shadow:var(--shadow);border-top:3px solid var(--tc,var(--gold))}
+.tile .lbl{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tile .val{font-family:var(--ff-mono);font-weight:700;font-size:30px;margin-top:6px;line-height:1;color:var(--tc,var(--ink))}
+.tile .sub{font-size:12.5px;color:var(--muted);margin-top:6px;font-family:var(--ff-mono)}
+
+.legend{display:flex;gap:18px;flex-wrap:wrap;margin:2px 0 6px}
+.legend span{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--ink)}
+.legend i{width:16px;height:16px;border-radius:5px;display:inline-block}
+.chart-wrap{overflow-x:auto}
+svg{display:block;width:100%;height:auto}
+.axlabel{fill:var(--muted);font-family:var(--ff-mono);font-size:15px}
+.catlabel{fill:var(--ink);font-family:var(--ff-disp);font-weight:700;font-size:16px}
+.vallabel{fill:var(--ink);font-family:var(--ff-mono);font-weight:700;font-size:14px}
+.gridline{stroke:var(--gridline);stroke-width:1}
+.zeroline{stroke:var(--line2);stroke-width:2}
+
+/* table */
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:14px;margin-top:18px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:11px 12px;text-align:right;border-top:1px solid var(--line);white-space:nowrap}
+th{background:var(--surface2);font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);border-top:none;position:sticky;top:0}
+th:first-child,td:first-child{text-align:left;font-weight:700}
+td{font-family:var(--ff-mono)}
+tr:nth-child(even) td{background:color-mix(in srgb,var(--surface2) 45%,transparent)}
+.pos{color:var(--pos)} .neg{color:var(--loss)}
+.empty{text-align:center;color:var(--muted);padding:50px 20px;font-size:16px}
+.pill{display:inline-block;font-family:var(--ff-body);font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px}
+.pill.bim{background:color-mix(in srgb,var(--bim) 18%,transparent);color:var(--bim)}
+.pill.cad{background:color-mix(in srgb,var(--cad) 18%,transparent);color:var(--cad)}
+.note{font-size:13.5px;color:var(--muted);background:var(--surface2);border:1px solid var(--line);border-left:3px solid var(--gold);border-radius:9px;padding:12px 14px;margin-top:16px}
+.callout{display:flex;gap:14px;align-items:center;background:var(--surface2);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-top:18px}
+.callout .big{font-family:var(--ff-disp);font-weight:800;font-size:26px}
+.roomctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.roomctl input{font-family:var(--ff-mono);font-size:14px;background:var(--surface2);border:1px solid var(--line2);border-radius:9px;padding:8px 10px;width:110px;color:var(--ink)}
+.chip{font-size:12px;font-weight:600;border:1px solid var(--line2);border-radius:999px;padding:4px 10px;color:var(--muted);display:inline-flex;align-items:center;gap:6px}
+@media(max-width:640px){ .brand span.t{display:none} .tile .val{font-size:24px} }
+:fullscreen .wrap, :-webkit-full-screen .wrap{padding-top:14px}
+</style>
+
+<div class="top"><div class="top-in">
+  <div class="brand"><span class="bimlogo">BIM</span><span class="t">Class Results</span></div>
+  <span class="live" id="live"><i></i><span id="liveTxt">connecting…</span></span>
+  <span class="chip" id="sessChip" style="display:none"></span>
+  <div class="sp"></div>
+  <div class="seg" id="roundSeg">
+    <button data-r="1" aria-pressed="false">Round 1</button>
+    <button data-r="2" aria-pressed="false">Round 2</button>
+    <button data-r="total" aria-pressed="true">Total</button>
+  </div>
+  <button class="icon-btn" id="xlsxBtn">⬇ Excel</button>
+  <button class="icon-btn" id="csvBtn">⬇ CSV</button>
+  <button class="icon-btn" id="fsBtn">⛶ Fullscreen</button>
+  <button class="icon-btn" id="themeBtn">◑ Theme</button>
+</div></div>
+
+<div class="wrap">
+  <div class="tabs" id="tabs"></div>
+  <div id="view"></div>
+  <div class="roomctl">
+    <span class="chip">Rooms watched: <b id="roomList" class="mono"></b></span>
+    <input id="roomAdd" placeholder="add code e.g. DEMO">
+    <button class="icon-btn" id="roomAddBtn" style="height:34px">+ watch</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $=(s,e=document)=>e.querySelector(s);
+const el=(t,a,h)=>{const n=document.createElement(t);if(a)for(const k in a){if(k==='class')n.className=a[k];else if(k.startsWith('on'))n[k]=a[k];else n.setAttribute(k,a[k]);}if(h!=null)n.innerHTML=h;return n;};
+const money=n=>(n<0?'−':'')+'$'+Math.abs(Math.round(n));
+const esc=s=>(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const ROLE={client:{name:'Client',c:'var(--client)'},designer:{name:'Design Team',c:'var(--designer)'},contractor:{name:'Contractor',c:'var(--contractor)'}};
+
+/* ---------- state ---------- */
+const LS_ROOMS='bimdash_rooms', LS_THEME='bimgame_theme';
+let DEFAULT_ROOMS=['1','2','3','4','5','6','7','8','9'];
+let rooms=loadRooms();
+let raw={};                 // code -> room state (or null)
+let round='total', tab='overview';
+let DB=null;
+let SESSION=(new URLSearchParams(location.search).get('s')||'').trim().toUpperCase().replace(/[^A-Z0-9-]/g,'').slice(0,24);
+let META=null;              // session meta {university,date}
+
+function loadRooms(){ try{const v=JSON.parse(localStorage.getItem(LS_ROOMS));if(Array.isArray(v)&&v.length)return v;}catch(e){} return DEFAULT_ROOMS.slice(); }
+function saveRooms(){ try{localStorage.setItem(LS_ROOMS,JSON.stringify(rooms));}catch(e){} }
+
+/* ---------- metrics ---------- */
+function roundMetrics(state,r){
+  const res=state&&state.results&&state.results[r]; if(!res) return null;
+  const P=(state.params&&state.params[r])||{};
+  const dr=(state.design&&state.design[r]&&state.design[r].rounds)||[];
+  const cr=(state.construction&&state.construction[r]&&state.construction[r].rounds)||[];
+  const cnt=(a,k,v)=>a.filter(x=>x&&x[k]===v).length;
+  return {
+    clientProfit:+res.clientProfit||0, designProfit:+res.designProfit||0, contractorProfit:+res.contractorProfit||0,
+    designFee:+res.designFee||0, constructionFee:+res.constructionFee||0,
+    totalQ:+res.totalQ||0, totalT:+res.totalT||0, qualityDemand:+P.qualityDemand||0, timeDemand:+P.timeDemand||0,
+    bimDiscount:+res.bimDiscount||0, designWinner:res.designWinner||null, contractorWinner:res.contractorWinner||null,
+    bimD:cnt(dr,'tool','BIM'), cadD:cnt(dr,'tool','CAD'), bimC:cnt(cr,'tool','BIM'), cadC:cnt(cr,'tool','CAD'),
+    superD:cnt(dr,'tier','Super'),seniorD:cnt(dr,'tier','Senior'),juniorD:cnt(dr,'tier','Junior'),
+    superC:cnt(cr,'tier','Super'),seniorC:cnt(cr,'tier','Senior'),juniorC:cnt(cr,'tier','Junior'),
+  };
+}
+function groupData(){
+  return rooms.map(code=>{
+    const st=raw[code];
+    const m1=st?roundMetrics(st,1):null, m2=st?roundMetrics(st,2):null;
+    return {code,label:'G'+code,st,m:{1:m1,2:m2},any:!!(m1||m2)};
+  });
+}
+// value for selected round; for 'total' sums available rounds (additive metrics only)
+function val(g,key){
+  if(round==='total'){ const a=g.m[1]&&g.m[1][key], b=g.m[2]&&g.m[2][key]; if(a==null&&b==null)return null; return (a||0)+(b||0); }
+  const m=g.m[round]; return m?m[key]:null;
+}
+function has(g){ return round==='total'? g.any : !!g.m[round]; }
+
+/* ---------- SVG grouped bar chart (handles negatives; direct labels; legend via caller) ---------- */
+function barChart(cats, series, opt){
+  opt=opt||{}; const fmt=opt.fmt||(v=>Math.round(v));
+  const W=1060, H=opt.height||440, padL=64, padR=20, padT=22, padB=70;
+  const plotW=W-padL-padR, plotH=H-padT-padB;
+  let vals=[]; series.forEach(s=>s.values.forEach(v=>{if(v!=null)vals.push(v);}));
+  if(!vals.length) vals=[0,1];
+  let mn=Math.min(0,...vals), mx=Math.max(0,...vals); if(mn===mx)mx=mn+1;
+  const span=mx-mn; mx+=span*0.14; if(mn<0)mn-=span*0.06;
+  const y=v=>padT+plotH*(1-(v-mn)/(mx-mn));
+  const n=cats.length||1, gW=plotW/n, nS=series.length, gPad=gW*0.16, bGap=4;
+  const bW=Math.max(6,(gW-gPad*2-(nS-1)*bGap)/nS);
+  const zeroY=y(0);
+  let s='<svg viewBox="0 0 '+W+' '+H+'" role="img" preserveAspectRatio="xMidYMid meet">';
+  // gridlines + y labels (~5 ticks)
+  const ticks=5;
+  for(let i=0;i<=ticks;i++){ const v=mn+(mx-mn)*i/ticks; const yy=y(v);
+    s+='<line class="gridline" x1="'+padL+'" y1="'+yy.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+yy.toFixed(1)+'"/>';
+    s+='<text class="axlabel" x="'+(padL-10)+'" y="'+(yy+5).toFixed(1)+'" text-anchor="end">'+fmt(v)+'</text>';
+  }
+  s+='<line class="zeroline" x1="'+padL+'" y1="'+zeroY.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+zeroY.toFixed(1)+'"/>';
+  cats.forEach((cat,ci)=>{
+    const gx=padL+gW*ci+gPad;
+    series.forEach((ser,si)=>{
+      const v=ser.values[ci]; const x=gx+si*(bW+bGap);
+      if(v==null){ s+='<text class="axlabel" x="'+(x+bW/2)+'" y="'+(zeroY-6)+'" text-anchor="middle" font-size="12">–</text>'; return; }
+      const yv=y(v); const top=Math.min(yv,zeroY), h=Math.max(2,Math.abs(yv-zeroY));
+      s+='<rect x="'+x.toFixed(1)+'" y="'+top.toFixed(1)+'" width="'+bW.toFixed(1)+'" height="'+h.toFixed(1)+'" rx="5" fill="'+ser.color+'"><title>'+esc(cat)+' · '+esc(ser.name)+': '+fmt(v)+'</title></rect>';
+      const ly=v>=0? top-7 : top+h+16;
+      s+='<text class="vallabel" x="'+(x+bW/2).toFixed(1)+'" y="'+ly.toFixed(1)+'" text-anchor="middle">'+fmt(v)+'</text>';
+    });
+    s+='<text class="catlabel" x="'+(padL+gW*ci+gW/2).toFixed(1)+'" y="'+(H-padB+30)+'" text-anchor="middle">'+esc(cat)+'</text>';
+  });
+  s+='</svg>'; return s;
+}
+function legend(items){ return '<div class="legend">'+items.map(i=>'<span><i style="background:'+i.color+'"></i>'+esc(i.name)+'</span>').join('')+'</div>'; }
+
+/* ---------- views ---------- */
+const TABS=[['overview','Overview'],['profit','Profit'],['choices','BIM vs CAD'],['qt','Quality & Time'],['table','Full table']];
+function renderTabs(){ const t=$('#tabs'); t.innerHTML=''; TABS.forEach(([k,lbl])=>{ const b=el('button',{class:'tab','aria-pressed':String(tab===k)},lbl); b.onclick=()=>{tab=k;render();}; t.appendChild(b); }); }
+
+function avg(arr){ return arr.length? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
+
+function render(){
+  renderTabs();
+  $('#roundSeg').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.r===round)));
+  $('#roomList').textContent=rooms.join(', ');
+  const gs=groupData(); const done=gs.filter(has);
+  const view=$('#view'); view.innerHTML='';
+  if(!done.length){ view.appendChild(el('div',{class:'card'},'<div class="empty">No finished games yet for this round.<br>As groups complete '+(round==='total'?'a round':'Round '+round)+', results appear here live.</div>')); return; }
+  if(tab==='overview') view.appendChild(Overview(done,gs));
+  else if(tab==='profit') view.appendChild(ProfitView(done));
+  else if(tab==='choices') view.appendChild(ChoicesView(done));
+  else if(tab==='qt') view.appendChild(QTView(done));
+  else if(tab==='table') view.appendChild(TableView(gs));
+}
+
+function Overview(done,gs){
+  const c=el('div',{});
+  const cP=done.map(g=>val(g,'clientProfit')), dP=done.map(g=>val(g,'designProfit')), kP=done.map(g=>val(g,'contractorProfit'));
+  const bimTot=done.reduce((n,g)=>n+(val(g,'bimD')||0)+(val(g,'bimC')||0),0);
+  const cadTot=done.reduce((n,g)=>n+(val(g,'cadD')||0)+(val(g,'cadC')||0),0);
+  const bimPct=bimTot+cadTot? Math.round(bimTot/(bimTot+cadTot)*100):0;
+  const tiles=el('div',{class:'tiles'});
+  const tile=(lbl,val,sub,col)=>{const t=el('div',{class:'tile'});t.style.setProperty('--tc',col||'var(--gold)');t.innerHTML=`<div class="lbl">${lbl}</div><div class="val mono">${val}</div>${sub?`<div class="sub">${sub}</div>`:''}`;return t;};
+  tiles.appendChild(tile('Groups reported',done.length+' / '+gs.length,'this '+(round==='total'?'game':'round'),'var(--gold)'));
+  tiles.appendChild(tile('Avg Client profit',money(avg(cP)),null,'var(--client)'));
+  tiles.appendChild(tile('Avg Designer profit',money(avg(dP)),null,'var(--designer)'));
+  tiles.appendChild(tile('Avg Contractor profit',money(avg(kP)),null,'var(--contractor)'));
+  tiles.appendChild(tile('BIM adoption',bimPct+'%',bimTot+' BIM · '+cadTot+' CAD rounds','var(--bim)'));
+  c.appendChild(tiles);
+
+  // did BIM pay off? compare avg total (all three) profit for BIM-majority vs CAD-majority groups
+  const totalProfit=g=>(val(g,'clientProfit')||0)+(val(g,'designProfit')||0)+(val(g,'contractorProfit')||0);
+  const bimHeavy=done.filter(g=>(val(g,'bimD')||0)+(val(g,'bimC')||0) >= (val(g,'cadD')||0)+(val(g,'cadC')||0));
+  const cadHeavy=done.filter(g=>!bimHeavy.includes(g));
+  if(bimHeavy.length&&cadHeavy.length){
+    const bA=avg(bimHeavy.map(totalProfit)), cA=avg(cadHeavy.map(totalProfit));
+    const co=el('div',{class:'callout'});
+    co.innerHTML=`<span class="big" style="color:var(--bim)">${money(bA)}</span>
+      <span>avg total profit for <b>BIM-leaning</b> groups (${bimHeavy.length}) vs
+      <span class="big" style="color:var(--cad)">${money(cA)}</span> for <b>CAD-leaning</b> groups (${cadHeavy.length}).
+      ${bA>cA?'BIM paid off across the class.':'CAD came out ahead this time — worth discussing why.'}</span>`;
+    c.appendChild(co);
+  }
+
+  // best group per role
+  const bestOf=(key)=>done.reduce((b,g)=>val(g,key)>(b?val(b,key):-1e9)?g:b,null);
+  const win=el('div',{class:'tiles'});
+  [['clientProfit','Top Client','var(--client)'],['designProfit','Top Designer','var(--designer)'],['contractorProfit','Top Contractor','var(--contractor)']].forEach(([k,lbl,col])=>{
+    const b=bestOf(k); if(b) win.appendChild((()=>{const t=el('div',{class:'tile'});t.style.setProperty('--tc',col);t.innerHTML=`<div class="lbl">${lbl}</div><div class="val mono">Group ${b.code}</div><div class="sub">${money(val(b,k))}</div>`;return t;})());
+  });
+  c.appendChild(win);
+  c.appendChild(el('div',{class:'note'},'Live from Firebase — the board updates the moment a group finishes. Use the Round switch (top-right) to compare Round 1, Round 2, or the combined Total.'));
+  return c;
+}
+
+function ProfitView(done){
+  const c=el('div',{class:'card'});
+  c.innerHTML=`<h2>Profit by group &amp; role</h2><div class="cap">Each group's earnings for the ${round==='total'?'whole game':'round'} — one bar per party. Bars below the line are losses.</div>`;
+  c.appendChild(el('div',{},legend([{name:'Client',color:'var(--client)'},{name:'Design Team',color:'var(--designer)'},{name:'Contractor',color:'var(--contractor)'}])));
+  const cats=done.map(g=>'Group '+g.code);
+  const series=[
+    {name:'Client',color:'var(--client)',values:done.map(g=>val(g,'clientProfit'))},
+    {name:'Design Team',color:'var(--designer)',values:done.map(g=>val(g,'designProfit'))},
+    {name:'Contractor',color:'var(--contractor)',values:done.map(g=>val(g,'contractorProfit'))},
+  ];
+  const w=el('div',{class:'chart-wrap'}); w.innerHTML=barChart(cats,series,{fmt:v=>money(v),height:460}); c.appendChild(w);
+  return c;
+}
+
+function ChoicesView(done){
+  const c=el('div',{});
+  const c1=el('div',{class:'card'});
+  c1.innerHTML=`<h2>BIM vs CAD — rounds used</h2><div class="cap">How many work rounds each group ran with each tool (design + construction combined).</div>`;
+  c1.appendChild(el('div',{},legend([{name:'BIM',color:'var(--bim)'},{name:'CAD',color:'var(--cad)'}])));
+  const cats=done.map(g=>'Group '+g.code);
+  const series=[
+    {name:'BIM',color:'var(--bim)',values:done.map(g=>(val(g,'bimD')||0)+(val(g,'bimC')||0))},
+    {name:'CAD',color:'var(--cad)',values:done.map(g=>(val(g,'cadD')||0)+(val(g,'cadC')||0))},
+  ];
+  const w=el('div',{class:'chart-wrap'}); w.innerHTML=barChart(cats,series,{fmt:v=>Math.round(v),height:400}); c1.appendChild(w);
+  c.appendChild(c1);
+  // labor tiers
+  const c2=el('div',{class:'card'});
+  c2.innerHTML=`<h2>Labor tiers hired</h2><div class="cap">Total hires across design &amp; construction — Super / Senior / Junior.</div>`;
+  c2.appendChild(el('div',{},legend([{name:'Super',color:'var(--client)'},{name:'Senior',color:'var(--designer)'},{name:'Junior',color:'var(--contractor)'}])));
+  const series2=[
+    {name:'Super',color:'var(--client)',values:done.map(g=>(val(g,'superD')||0)+(val(g,'superC')||0))},
+    {name:'Senior',color:'var(--designer)',values:done.map(g=>(val(g,'seniorD')||0)+(val(g,'seniorC')||0))},
+    {name:'Junior',color:'var(--contractor)',values:done.map(g=>(val(g,'juniorD')||0)+(val(g,'juniorC')||0))},
+  ];
+  const w2=el('div',{class:'chart-wrap'}); w2.innerHTML=barChart(cats,series2,{fmt:v=>Math.round(v),height:380}); c2.appendChild(w2);
+  c.appendChild(c2);
+  return c;
+}
+
+function QTView(done){
+  const c=el('div',{class:'card'});
+  const demand = done.length? (val(done[0],'qualityDemand')||0) : 0;
+  c.innerHTML=`<h2>Quality &amp; Time delivered</h2><div class="cap">Quality achieved and time taken per group${round!=='total'?` · target this round ≈ ${demand}`:''}. Compare against the demand each group had to meet.</div>`;
+  c.appendChild(el('div',{},legend([{name:'Quality 👍',color:'var(--quality)'},{name:'Time ⌛',color:'var(--time)'}])));
+  const cats=done.map(g=>'Group '+g.code);
+  const series=[
+    {name:'Quality',color:'var(--quality)',values:done.map(g=>val(g,'totalQ'))},
+    {name:'Time',color:'var(--time)',values:done.map(g=>val(g,'totalT'))},
+  ];
+  const w=el('div',{class:'chart-wrap'}); w.innerHTML=barChart(cats,series,{fmt:v=>Math.round(v),height:420}); c.appendChild(w);
+  c.appendChild(el('div',{class:'note'},'Higher quality earns the Client $50 per unit; time beyond the allowance costs $15 per unit. Groups that beat the quality target while staying on time drove the biggest profits.'));
+  return c;
+}
+
+function TableView(gs){
+  const c=el('div',{class:'card'});
+  c.innerHTML=`<h2>Full results table</h2><div class="cap">Every group, ${round==='total'?'both rounds combined':'this round'}. Dashes = not finished yet.</div>`;
+  const cols=['Group','Client 💰','Designer 💰','Contractor 💰','Quality 👍','Time ⌛','Design fee','Build fee','BIM','CAD'];
+  let rows='';
+  gs.forEach(g=>{
+    if(!has(g)){ rows+=`<tr><td>Group ${g.code}</td><td colspan="9" style="text-align:center;color:var(--muted)">— not finished —</td></tr>`; return; }
+    const cell=(k,mn)=>{const v=val(g,k);return v==null?'–':(mn?money(v):Math.round(v));};
+    const cls=k=>{const v=val(g,k);return v==null?'':(v>=0?'pos':'neg');};
+    rows+=`<tr><td>Group ${g.code}</td>
+      <td class="${cls('clientProfit')}">${cell('clientProfit',1)}</td>
+      <td class="${cls('designProfit')}">${cell('designProfit',1)}</td>
+      <td class="${cls('contractorProfit')}">${cell('contractorProfit',1)}</td>
+      <td>${cell('totalQ')}</td><td>${cell('totalT')}</td>
+      <td>${cell('designFee',1)}</td><td>${cell('constructionFee',1)}</td>
+      <td><span class="pill bim">${(val(g,'bimD')||0)+(val(g,'bimC')||0)}</span></td>
+      <td><span class="pill cad">${(val(g,'cadD')||0)+(val(g,'cadC')||0)}</span></td></tr>`;
+  });
+  // averages row
+  const done=gs.filter(has);
+  const A=(k,mn)=>{const a=done.map(g=>val(g,k)).filter(v=>v!=null);return a.length?(mn?money(avg(a)):Math.round(avg(a))):'–';};
+  rows+=`<tr style="border-top:2px solid var(--line2)"><td>Average</td>
+    <td>${A('clientProfit',1)}</td><td>${A('designProfit',1)}</td><td>${A('contractorProfit',1)}</td>
+    <td>${A('totalQ')}</td><td>${A('totalT')}</td><td>${A('designFee',1)}</td><td>${A('constructionFee',1)}</td><td>–</td><td>–</td></tr>`;
+  const t=el('div',{class:'tbl'});
+  t.innerHTML=`<table><thead><tr>${cols.map(h=>'<th>'+h+'</th>').join('')}</tr></thead><tbody>${rows}</tbody></table>`;
+  c.appendChild(t);
+  return c;
+}
+
+/* ---------- export (all rounds, full record) ---------- */
+function collectExport(){
+  const summary=[], rolls=[];
+  groupData().forEach(g=>{
+    const st=g.st; if(!st) return;
+    const r0=st.roster||{};
+    const names={ client:(r0.client&&r0.client.name)||'', designers:(r0.designers||[]).map(p=>p.name).join(' / '), contractors:(r0.contractors||[]).map(p=>p.name).join(' / ') };
+    [1,2].forEach(r=>{
+      const m=g.m[r]; if(!m) return;
+      summary.push({ Session:SESSION||'', University:(META&&META.university)||'', Date:(META&&META.date)||'',
+        Group:g.code, Round:r, Client:names.client, Designers:names.designers, Contractors:names.contractors,
+        'Client profit':m.clientProfit, 'Designer profit':m.designProfit, 'Contractor profit':m.contractorProfit,
+        'Design fee':m.designFee, 'Build fee':m.constructionFee,
+        'Quality delivered':m.totalQ, 'Quality demand':m.qualityDemand, 'Time taken':m.totalT, 'Time demand':m.timeDemand,
+        'BIM discount':m.bimDiscount, 'Design winner':m.designWinner||'', 'Build winner':m.contractorWinner||'',
+        'Design BIM':m.bimD, 'Design CAD':m.cadD, 'Constr BIM':m.bimC, 'Constr CAD':m.cadC,
+        'Design Super':m.superD, 'Design Senior':m.seniorD, 'Design Junior':m.juniorD,
+        'Constr Super':m.superC, 'Constr Senior':m.seniorC, 'Constr Junior':m.juniorC });
+      const push=(phase,arr)=>(arr||[]).forEach((x,i)=>rolls.push({ Group:g.code, Round:r, Phase:phase, '#':i+1,
+        Tier:x.tier, Tool:x.tool, 'Die (labor)':x.tierFace, 'Die (tool)':x.toolFace, 'Quality':x.qual, 'Time':x.time, 'Cost':x.cost, 'Overhead':x.overhead||0 }));
+      push('Design', st.design&&st.design[r]&&st.design[r].rounds);
+      push('Construction', st.construction&&st.construction[r]&&st.construction[r].rounds);
+    });
+  });
+  return {summary,rolls};
+}
+function toCSV(rows){ if(!rows.length) return ''; const cols=Object.keys(rows[0]);
+  const q=v=>{v=(v==null?'':String(v)); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
+  return cols.join(',')+'\n'+rows.map(r=>cols.map(c=>q(r[c])).join(',')).join('\n'); }
+function stamp(){ const d=new Date(),p=n=>String(n).padStart(2,'0'); const s=(SESSION?SESSION+'_':''); return s+d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'_'+p(d.getHours())+p(d.getMinutes()); }
+function dl(name,blob){ const u=URL.createObjectURL(blob),a=el('a',{href:u,download:name}); document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(u);a.remove();},1500); }
+function exportCSV(){ const {summary}=collectExport(); if(!summary.length){alert('No finished games to export yet.');return;}
+  dl('BIM-Game-Results_'+stamp()+'.csv', new Blob(['﻿'+toCSV(summary)],{type:'text/csv;charset=utf-8'})); }
+function exportXLSX(){ const {summary,rolls}=collectExport(); if(!summary.length){alert('No finished games to export yet.');return;}
+  if(!window.XLSX){ exportCSV(); return; }
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), 'Summary');
+  if(rolls.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rolls), 'Work rounds');
+  XLSX.writeFile(wb, 'BIM-Game-Results_'+stamp()+'.xlsx'); }
+
+/* ---------- firebase wiring ---------- */
+function watch(code){ if(!DB||!SESSION) return; DB.ref('sessions/'+SESSION+'/rooms/'+code).on('value', s=>{ raw[code]=s.val(); setLive(true); render(); }, e=>{ console.warn('read '+code,e); }); }
+function setLive(on){ const l=$('#live'); l.className='live'+(on?' on':''); $('#liveTxt').textContent=on?'Live':'offline'; }
+function renderMeta(){ const s=$('#sessChip'); if(!s) return; if(SESSION){ const m=META||{}; s.style.display='inline-flex'; s.innerHTML='🔑 '+esc(SESSION)+(m.university?' · '+esc(m.university):'')+(m.date?' · '+esc(m.date):''); } else s.style.display='none'; }
+
+function promptSession(){
+  const v=$('#view'); v.innerHTML='';
+  const c=el('div',{class:'card'});
+  c.innerHTML=`<h2>Open a class session</h2><div class="cap">Enter the session code your game is using (or open the dashboard link the game gave you). It looks like <b class="mono">20260917-7QF2</b>.</div>`;
+  const f=el('label',{style:'display:block;margin-top:14px'}); const i=el('input',{id:'sessIn',placeholder:'session code',style:'font-family:var(--ff-mono);font-size:16px;background:var(--surface2);border:1px solid var(--line2);border-radius:10px;padding:11px 13px;width:100%;max-width:320px;color:var(--ink)'}); f.appendChild(i); c.appendChild(f);
+  const b=el('button',{class:'tab',style:'margin-top:12px'},'Open results ▸');
+  const go=()=>{ const code=(i.value||'').trim().toUpperCase().replace(/[^A-Z0-9-]/g,'').slice(0,24); if(code){ location.search='?s='+encodeURIComponent(code); } };
+  b.onclick=go; i.onkeydown=e=>{ if(e.key==='Enter') go(); };
+  c.appendChild(b); v.appendChild(c);
+}
+
+function boot(){
+  applyTheme();
+  $('#themeBtn').onclick=toggleTheme;
+  $('#fsBtn').onclick=()=>{ const d=document.documentElement; if(document.fullscreenElement){document.exitFullscreen&&document.exitFullscreen();} else {d.requestFullscreen&&d.requestFullscreen();} };
+  $('#xlsxBtn').onclick=exportXLSX; $('#csvBtn').onclick=exportCSV;
+  $('#roundSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{round=b.dataset.r;render();});
+  $('#roomAddBtn').onclick=()=>{ const v=($('#roomAdd').value||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,12); if(v&&!rooms.includes(v)){ rooms.push(v); saveRooms(); watch(v); render(); } $('#roomAdd').value=''; };
+  $('#roomAdd').onkeydown=e=>{ if(e.key==='Enter') $('#roomAddBtn').click(); };
+  renderMeta();
+  const cfg=window.FIREBASE_CONFIG;
+  if(cfg && cfg.databaseURL && cfg.databaseURL.indexOf('PASTE')<0 && window.firebase){
+    try{ firebase.initializeApp(cfg); DB=firebase.database();
+      DB.ref('.info/connected').on('value',s=>setLive(!!s.val()));
+      if(SESSION){ DB.ref('sessions/'+SESSION+'/meta').once('value').then(s=>{META=s.val();renderMeta();}).catch(()=>{}); rooms.forEach(watch); render(); }
+      else { renderTabs(); promptSession(); }
+    }catch(e){ console.error('Firebase init failed',e); $('#liveTxt').textContent='config error'; render(); }
+  } else { $('#liveTxt').textContent='no Firebase config'; render(); }
+}
+function applyTheme(){ let t=null; try{t=localStorage.getItem(LS_THEME);}catch(e){} if(t)document.documentElement.dataset.theme=t; }
+function toggleTheme(){ const cur=document.documentElement.dataset.theme; const sysDark=matchMedia('(prefers-color-scheme:dark)').matches; const nx=cur?(cur==='dark'?'light':'dark'):(sysDark?'light':'dark'); document.documentElement.dataset.theme=nx; try{localStorage.setItem(LS_THEME,nx);}catch(e){} }
+
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
+</script>

@@ -340,9 +340,15 @@ function reduce(state, a){
       ensureRound(s,R);
       s.params = s.params||{};
       s.params[R]=makeParams(a.constructionFee);
-      // preset design & construction fee proposals to the "fair" defaults
-      s.fees[R].design.proposal   = s.params[R].designFeeDefault;
-      s.fees[R].construction.proposal = s.params[R].constructionFee;
+      if(R===2){
+        // Round 2: designers & contractors bid competitively (sealed bids)
+        s.fees[R].design={bids:{},winner:null,agreed:null};
+        s.fees[R].construction={bids:{},winner:null,agreed:null};
+      } else {
+        // Round 1: single collaborative team, negotiate one fee (preset to fair default)
+        s.fees[R].design.proposal   = s.params[R].designFeeDefault;
+        s.fees[R].construction.proposal = s.params[R].constructionFee;
+      }
       s.phase='design_bid';
       break;
     }
@@ -351,6 +357,18 @@ function reduce(state, a){
       ensureRound(s,R); s.fees[R][a.kind].agreed=a.amount; s.fees[R][a.kind].proposal=a.amount;
       if(a.kind==='design') s.phase='design';
       else s.phase='construction';
+      break;
+    }
+    case 'bid':{                          // Round 2 competitive: a bidder submits their own price
+      ensureRound(s,R);
+      if(!s.fees[R][a.kind].bids) s.fees[R][a.kind].bids={};
+      s.fees[R][a.kind].bids[a.playerId]=a.amount;
+      break;
+    }
+    case 'pick_winner':{                  // Round 2 competitive: client hires one bidder
+      ensureRound(s,R);
+      const f=s.fees[R][a.kind]; const amt=f.bids&&f.bids[a.playerId];
+      if(amt!=null){ f.winner=a.playerId; f.agreed=amt; s.phase = a.kind==='design'?'design':'construction'; }
       break;
     }
     case 'work_round':{
@@ -409,12 +427,19 @@ function computeResult(s,R){
   const designProfit = designFee - dCost - (dT-P.designTimeAllow)*OVERTIME_PEN - dOver;
   const contractorProfit = constructionFee - cCost - (cT-P.constructionTimeAllow)*OVERTIME_PEN - cOver + bimDiscount;
   const clientProfit = P.budget - (designFee+constructionFee) + totalQ*QUALITY_BONUS - (totalT-P.timeDemand)*OVERTIME_PEN;
+  const designWinner=nameOf(s,s.fees[R].design.winner), contractorWinner=nameOf(s,s.fees[R].construction.winner);
   s.results[R]={ designFee,constructionFee,dQ,dT,dCost,dOver,cQ,cT,cCost,cOver,bimDiscount,
-    totalQ,totalT,designProfit,contractorProfit,clientProfit };
+    totalQ,totalT,designProfit,contractorProfit,clientProfit,designWinner,contractorWinner };
+}
+function nameOf(s,pid){
+  if(!pid) return null; const r=s.roster||{};
+  if(r.client&&r.client.playerId===pid) return r.client.name;
+  const p=(r.designers||[]).concat(r.contractors||[]).find(x=>x.playerId===pid);
+  return p?p.name:null;
 }
 
 /* ============================ sync layer (Firebase RTDB) ================== */
-let STATE=null, LOCAL=false, FB=null, DB=null, ROOM=null, roomRef=null;
+let STATE=null, LOCAL=false, FB=null, DB=null, ROOM=null, roomRef=null, SESSION=null, SESSION_META=null;
 const LS_ID='bimgame_identity';
 const LS_STATE='bimgame_state_solo';
 const LS_THEME='bimgame_theme';
@@ -425,7 +450,7 @@ let ui = { tier:null, tool:null };  // ephemeral per-device selection (not synce
 function loadIdentity(){
   try{ const v=JSON.parse(localStorage.getItem(LS_ID)); if(v&&v.playerId) return v; }catch(e){}
   const id='p'+Math.random().toString(36).slice(2,9);
-  const v={playerId:id,name:'',role:null,room:null}; try{localStorage.setItem(LS_ID,JSON.stringify(v));}catch(e){}
+  const v={playerId:id,name:'',role:null,room:null,session:null}; try{localStorage.setItem(LS_ID,JSON.stringify(v));}catch(e){}
   return v;
 }
 function saveIdentity(){ try{localStorage.setItem(LS_ID,JSON.stringify(me));}catch(e){} }
@@ -439,14 +464,16 @@ function configReady(){
 async function boot(){
   applyTheme();
   document.getElementById('themeBtn').onclick=toggleTheme;
+  const urlS = new URLSearchParams(location.search).get('s');
   if(configReady() && window.firebase){
     try{
       FB = firebase.initializeApp(window.FIREBASE_CONFIG);
       DB = firebase.database();
       LOCAL=false;
       DB.ref('.info/connected').on('value', s=>{ const d=document.getElementById('syncdot'); if(d) d.className='syncdot'+(s.val()?'':' local'); });
-      if(me.room){ joinRoom(me.room); return; }
-      STATE=defaultState(); render();        // -> room picker
+      SESSION = normSession(urlS) || me.session || null;
+      if(SESSION){ enterSession(SESSION); return; }
+      STATE=defaultState(); render();        // -> landing (host / join)
       return;
     }catch(e){ console.warn('Firebase init failed — solo mode.',e); FB=null; }
   }
@@ -457,11 +484,26 @@ async function boot(){
 }
 
 function normCode(x){ return String(x||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,12); }
+function normSession(x){ return String(x||'').trim().toUpperCase().replace(/[^A-Z0-9-]/g,'').slice(0,24); }
+function stampCode(dateStr){ const d=dateStr&&!isNaN(new Date(dateStr))?new Date(dateStr):new Date(); const p=n=>String(n).padStart(2,'0'); return ''+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'-'+Math.random().toString(36).slice(2,6).toUpperCase(); }
+
+function hostSession(university,date){
+  const code=stampCode(date);
+  DB.ref('sessions/'+code+'/meta').set({university:university||'',date:date||'',created:Date.now()}).catch(e=>console.warn('meta write',e));
+  me.room=null; me.role=null; saveIdentity();
+  enterSession(code);
+}
+function enterSession(code){
+  code=normSession(code); if(!code||!DB) return;
+  SESSION=code; me.session=code; saveIdentity();
+  DB.ref('sessions/'+code+'/meta').once('value').then(s=>{ SESSION_META=s.val(); render(); }).catch(()=>{});
+  if(me.room){ joinRoom(me.room); } else { STATE=defaultState(); render(); }
+}
 function joinRoom(code){
-  code=normCode(code); if(!code) return;
+  code=normCode(code); if(!code||!SESSION) return;
   ROOM=code; me.room=code; saveIdentity();
   if(roomRef) roomRef.off();
-  roomRef = DB.ref('rooms/'+code);
+  roomRef = DB.ref('sessions/'+SESSION+'/rooms/'+code);
   roomRef.on('value', snap=>{ STATE = normalize(snap.val() || defaultState()); render(); },
     err=>{ console.warn('room read failed',err); LOCAL=true; STATE=defaultState(); render(); });
 }
@@ -471,6 +513,14 @@ function leaveRoom(){
   ROOM=null; me.room=null; me.role=null; saveIdentity();
   STATE=defaultState(); render();
 }
+function leaveSession(){
+  if(roomRef){ roomRef.off(); roomRef=null; }
+  ROOM=null; SESSION=null; SESSION_META=null; me.room=null; me.role=null; me.session=null; saveIdentity();
+  history.replaceState(null,'',location.pathname);
+  STATE=defaultState(); render();
+}
+function joinLink(){ return location.origin+location.pathname+'?s='+encodeURIComponent(SESSION); }
+function dashLink(){ return location.origin+location.pathname.replace(/[^/]*$/,'dashboard.html')+'?s='+encodeURIComponent(SESSION); }
 
 function reconcileIdentity(){
   if(!STATE||!STATE.roster) return;
@@ -524,10 +574,14 @@ function pips(face){ // returns pip layout html for a face 1..6
 /* which party the current phase belongs to (drives solo hotseat) */
 function activeParty(p){ return {client:'client',design_bid:'client',design:'designer',contract_bid:'client',construction:'contractor',result:'client',final:'client'}[p]||'client'; }
 const SOLO = ()=> LOCAL && STATE.solo;
+function discList(kind){ return ((kind==='design'?STATE.roster.designers:STATE.roster.contractors)||[]); }
+// Round 2 pits the two designers (and two contractors) against each other as rival bidders.
+function isCompetitive(kind){ return STATE.round===2 && !SOLO() && discList(kind).length>=2; }
 
 /* ============================ render ====================================== */
 function render(){
   const app=$('#app'); app.innerHTML='';
+  if(FB && !SESSION){ renderTopExtra(); app.appendChild(Landing()); decorate(); return; }
   if(FB && !ROOM){ renderTopExtra(); app.appendChild(RoomPicker()); decorate(); return; }
   if(SOLO() && me.role!=='teacher' && STATE.phase!=='lobby'){ me.role=activeParty(STATE.phase); }
   else if(!SOLO()){ reconcileIdentity(); }
@@ -555,6 +609,10 @@ function render(){
 
 function renderTopExtra(){
   const box=$('#tb-extra'); box.innerHTML='';
+  if(SESSION){
+    const s=el('span',{class:'chip',title:'Session code'},'🔑 '+SESSION); s.style.borderColor='var(--line2)';
+    box.appendChild(s);
+  }
   if(ROOM){
     const g=el('span',{class:'chip'},'Group '+ROOM); g.style.borderColor='var(--line2)';
     box.appendChild(g);
@@ -586,13 +644,58 @@ function Vitals(){
   return wrap;
 }
 
+/* -------- Landing: host or join a session -------- */
+function copyTxt(txt,btn){ try{ navigator.clipboard.writeText(txt).then(()=>{ if(btn){const o=btn.textContent; btn.textContent='Copied ✓'; setTimeout(()=>btn.textContent=o,1200);} }); }catch(e){} }
+function Landing(){
+  const c=el('div',{}); const mode=ui.landing||'choose'; const card=el('div',{class:'card'});
+  if(mode==='host'){
+    card.innerHTML=`<div class="eyebrow"><span class="step">HOST</span> New class session</div>
+      <h2>Start a session</h2>
+      <p class="lede">Create a private session for your class. You'll get a code and a link to share with your students — each session keeps its own live board and its own records.</p>`;
+    const uF=el('label',{class:'field'},'<span>University / school</span>'); const uI=el('input',{type:'text',placeholder:'e.g. National Taiwan University',maxlength:'60'}); uF.appendChild(uI); card.appendChild(uF);
+    const dF=el('label',{class:'field'},'<span>Play date</span>'); const dI=el('input',{type:'date'}); dI.value=new Date().toISOString().slice(0,10); dF.appendChild(dI); card.appendChild(dF);
+    const b=el('button',{class:'btn gold',style:'margin-top:16px'},'Create session ▸'); b.onclick=()=>hostSession(uI.value.trim(),dI.value); card.appendChild(b);
+    const back=el('button',{class:'tinylink',style:'display:block;margin:12px auto 0'},'← back'); back.onclick=()=>{ui.landing='choose';render();}; card.appendChild(back);
+  } else if(mode==='join'){
+    card.innerHTML=`<div class="eyebrow"><span class="step">JOIN</span> Enter a session</div>
+      <h2>Join your class</h2>
+      <p class="lede">Type the session code your teacher gave you — or just open the link they shared.</p>`;
+    const f=el('label',{class:'field'},'<span>Session code</span>'); const i=el('input',{type:'text',placeholder:'e.g. 20260917-7QF2',maxlength:'24'}); f.appendChild(i); card.appendChild(f);
+    const b=el('button',{class:'btn role',style:'--role:var(--client);margin-top:14px'},'Join session ▸'); b.onclick=()=>{ const code=normSession(i.value); if(code) enterSession(code); }; card.appendChild(b);
+    const back=el('button',{class:'tinylink',style:'display:block;margin:12px auto 0'},'← back'); back.onclick=()=>{ui.landing='choose';render();}; card.appendChild(back);
+  } else {
+    card.innerHTML=`<div class="eyebrow"><span class="step">WELCOME</span> A “BIM” board game for AEC projects</div>
+      <h2>To BIM, or not to BIM</h2>
+      <p class="lede">A live, multiplayer classroom game: a client, design team and contractor weigh BIM vs CAD across a building project — rolling for quality, time and profit.</p>`;
+    const row=el('div',{style:'display:grid;gap:10px;margin-top:16px'});
+    const h=el('button',{class:'btn primary'},'🎓 Host a session (teacher)'); h.onclick=()=>{ui.landing='host';render();};
+    const j=el('button',{class:'btn'},'👋 Join a session (student)'); j.onclick=()=>{ui.landing='join';render();};
+    row.appendChild(h); row.appendChild(j); card.appendChild(row);
+    const s=el('button',{class:'tinylink',style:'display:block;margin:14px auto 0'},'Just exploring? Try a solo pass-the-phone game');
+    s.onclick=()=>{ LOCAL=true; SESSION=null; if(roomRef){roomRef.off();roomRef=null;} STATE=defaultState(); render(); }; card.appendChild(s);
+  }
+  c.appendChild(card);
+  return c;
+}
+
 /* -------- Room picker (choose a group, live multiplayer) -------- */
 function RoomPicker(){
   const c=el('div',{});
+  // session share banner (teacher shows this to the class)
+  const sb=el('div',{class:'card'});
+  const meta = SESSION_META||{};
+  sb.innerHTML=`<div class="eyebrow"><span class="step">SESSION</span> ${meta.university?esc(meta.university)+' · ':''}${meta.date?esc(meta.date):''}</div>
+    <h2 style="font-size:19px">Session <span class="mono" style="color:var(--gold)">${esc(SESSION||'')}</span></h2>
+    <p class="lede">Students join this session, then pick a group. Share the link or the code above.</p>`;
+  const rowL=el('div',{class:'btn-row'});
+  const lb=el('button',{class:'btn sm'},'📋 Copy join link'); lb.onclick=()=>copyTxt(joinLink(),lb);
+  const db=el('button',{class:'btn sm'},'📊 Copy results-dashboard link'); db.onclick=()=>copyTxt(dashLink(),db);
+  rowL.appendChild(lb); rowL.appendChild(db); sb.appendChild(rowL);
+  c.appendChild(sb);
   const card=el('div',{class:'card'});
   card.innerHTML=`<div class="eyebrow"><span class="step">JOIN</span> Live multiplayer</div>
     <h2>Join your group</h2>
-    <p class="lede">Everyone in the same group shares one live board across their phones. Pick the group number your TA gave you, then choose your role.</p>`;
+    <p class="lede">Everyone in the same group shares one live board across their phones. Pick the group number your teacher gave you, then choose your role.</p>`;
   const nameF=el('label',{class:'field'},`<span>Your name</span>`);
   const nameI=el('input',{type:'text',placeholder:'e.g. Wei',maxlength:'18',value:esc(me.name||'')});
   nameI.oninput=e=>{ me.name=e.target.value.slice(0,18); saveIdentity(); };
@@ -607,16 +710,10 @@ function RoomPicker(){
   }
   card.appendChild(grid);
 
-  const cf=el('label',{class:'field'},`<span>…or a custom room code</span>`);
-  const ci=el('input',{type:'text',placeholder:'e.g. DEMO',maxlength:'12'});
-  cf.appendChild(ci); card.appendChild(cf);
-  const cb=el('button',{class:'btn',style:'margin-top:10px'},'Join custom room ▸');
-  cb.onclick=()=>{ if(!me.name){ nameI.focus(); nameI.style.borderColor='var(--loss)'; return; } const code=normCode(ci.value); if(code) joinRoom(code); };
-  card.appendChild(cb);
   c.appendChild(card);
 
-  const t=el('button',{class:'tinylink',style:'display:block;margin:14px auto 0'},'Just exploring? Try a solo pass-the-phone game');
-  t.onclick=()=>{ LOCAL=true; if(roomRef){roomRef.off();roomRef=null;} ROOM=null; STATE=defaultState(); render(); };
+  const t=el('button',{class:'tinylink',style:'display:block;margin:14px auto 0'},'← leave this session');
+  t.onclick=()=>leaveSession();
   c.appendChild(t);
   return c;
 }
@@ -728,16 +825,96 @@ function ClientPlan(){
 }
 
 /* -------- Bidding / negotiation -------- */
+/* expected value (per die) for a tier/tool curve */
+function EV(curve){ const d=DESIGN_TIER[curve]; return { q:d.q.reduce((a,b)=>a+b,0)/6, t:d.t.reduce((a,b)=>a+b,0)/6 }; }
+function fmt1(n){ return String(Math.round(n*10)/10); }
+
+/* read-only reference: price + expected quality/time + quality odds per labor & tool */
+function LaborReference(kind){
+  const isDesign=kind==='design', cst=isDesign?COST.design:COST.construction, mult=isDesign?1:5;
+  const tl=isDesign?'Architect':'Engineer';
+  const names={Super:'Super '+tl,Senior:'Senior '+tl,Junior:'Junior '+tl};
+  const wrap=el('div',{class:'ledger',style:'margin-top:10px'});
+  const rowsL=['Super','Senior','Junior'].map(t=>{const e=EV(t);return `<tr><td>${TIER_META[t].icon} ${names[t]}</td><td>$${cst[t]}</td><td>${fmt1(e.q*mult)}</td><td>${fmt1(e.t*mult)}</td><td>${dist(t)}</td></tr>`;}).join('');
+  const rowsT=['BIM','CAD'].map(t=>{const e=EV(TOOL_CURVE[t]);return `<tr><td>${TIER_META[t].icon} ${t} tool</td><td>$${cst[t]}</td><td>${fmt1(e.q*mult)}</td><td>${fmt1(e.t*mult)}</td><td>${dist(TOOL_CURVE[t])}</td></tr>`;}).join('');
+  wrap.innerHTML=`<table><thead><tr><th>Labor / tool</th><th>Cost</th><th>E[👍]</th><th>E[⌛]</th><th>Quality odds</th></tr></thead><tbody>${rowsL}${rowsT}</tbody></table>`;
+  return wrap;
+}
+
+/* interactive planner: pick a combo + rounds, see cost / expected quality-time / profit */
+function BidPlanner(kind,cfg){
+  const R=STATE.round, P=STATE.params[R];
+  const isDesign=kind==='design', cst=isDesign?COST.design:COST.construction, mult=isDesign?1:5;
+  const demandQ=isDesign?P.designQ:P.constructionQ, allowT=isDesign?P.designTimeAllow:P.constructionTimeAllow;
+  if(!ui.plan) ui.plan={tier:'Super',tool:'BIM',rounds:1};
+  const pl=ui.plan;
+  const eqR=(EV(pl.tier).q+EV(TOOL_CURVE[pl.tool]).q)*mult, etR=(EV(pl.tier).t+EV(TOOL_CURVE[pl.tool]).t)*mult;
+  const costPer=cst[pl.tier]+cst[pl.tool], N=pl.rounds;
+  const totalCost=costPer*N, expQ=eqR*N, expT=etR*N;
+  const timeAdj=(allowT-expT)*OVERTIME_PEN;
+  let bim=0; if(!isDesign && pl.tool==='BIM'){ const dBIM=((STATE.design[R]&&STATE.design[R].rounds)||[]).filter(x=>x.tool==='BIM').length; bim=Math.min(dBIM,N)*BIM_DISCOUNT; }
+  const breakeven=Math.max(0,Math.ceil((totalCost-timeAdj-bim)/10)*10);
+  const roundsToDemand=Math.max(1,Math.ceil(demandQ/eqR));
+  const meetOk=expQ>=demandQ-1e-9;
+
+  const c=el('div',{});
+  c.appendChild(el('div',{class:'subhead'},'Reference — price & odds'));
+  c.appendChild(LaborReference(kind));
+  c.appendChild(el('div',{class:'subhead'},'Plan a combination'));
+  const controls=el('div',{style:'display:flex;flex-wrap:wrap;gap:8px;align-items:center'});
+  const tierRow=el('div',{class:'pill-tab'});
+  ['Super','Senior','Junior'].forEach(t=>{const b=el('button',{'aria-pressed':String(pl.tier===t)},t);b.onclick=()=>{pl.tier=t;render();};tierRow.appendChild(b);});
+  const toolRow=el('div',{class:'pill-tab'});
+  ['BIM','CAD'].forEach(t=>{const b=el('button',{'aria-pressed':String(pl.tool===t)},t);b.onclick=()=>{pl.tool=t;render();};toolRow.appendChild(b);});
+  controls.appendChild(tierRow); controls.appendChild(toolRow); c.appendChild(controls);
+  const rr=el('div',{style:'display:flex;align-items:center;gap:12px;margin-top:12px'});
+  rr.appendChild(el('span',{style:'color:var(--muted);font-size:13px'},'Rounds you aim for'));
+  const minus=el('button',{class:'btn sm'},'−'); minus.onclick=()=>{pl.rounds=Math.max(1,pl.rounds-1);render();};
+  const plus=el('button',{class:'btn sm'},'+'); plus.onclick=()=>{pl.rounds=Math.min(12,pl.rounds+1);render();};
+  rr.appendChild(minus); rr.appendChild(el('b',{class:'mono',style:'font-size:18px;min-width:22px;text-align:center'},String(N))); rr.appendChild(plus);
+  c.appendChild(rr);
+
+  const calc=el('div',{class:'card',style:'margin-top:12px;background:var(--surface2);box-shadow:none'});
+  calc.innerHTML=`
+    <div class="kv"><span class="k">Cost per round · ${pl.tier} + ${pl.tool}</span><span class="v">$${costPer}</span></div>
+    <div class="kv"><span class="k">Estimated cost · ${N} round${N>1?'s':''}</span><span class="v" style="color:var(--money);font-size:16px">$${totalCost}</span></div>
+    <div class="kv"><span class="k">Expected quality</span><span class="v" style="color:${meetOk?'var(--quality)':'var(--loss)'}">≈ ${fmt1(expQ)} / ${demandQ} 👍 ${meetOk?'✓ reaches target':'· aim ~'+roundsToDemand+' rounds'}</span></div>
+    <div class="kv"><span class="k">Expected time</span><span class="v">≈ ${fmt1(expT)} / ${allowT} ⌛ ${expT>allowT?'<span style="color:var(--loss)">(+'+fmt1(expT-allowT)+' over)</span>':'<span style="color:var(--quality)">(under allowance)</span>'}</span></div>
+    <div class="kv"><span class="k">Time ${timeAdj>=0?'bonus (finished early)':'penalty (ran over)'}</span><span class="v ${timeAdj>=0?'pos':'neg'}">${timeAdj>=0?'+':'−'}$${Math.round(Math.abs(timeAdj))}</span></div>
+    ${bim?`<div class="kv"><span class="k">Likely BIM saving (design used BIM)</span><span class="v" style="color:var(--quality)">+$${bim}</span></div>`:''}
+    <div class="kv"><span class="k">Break-even fee ≈</span><span class="v">$${breakeven}</span></div>`;
+  c.appendChild(calc);
+
+  c.appendChild(el('label',{class:'field'},`<span>${cfg.label} 💰</span>`));
+  const inp=el('input',{type:'number',min:'0',step:'10',value:String(cfg.currentFee!=null?cfg.currentFee:breakeven)});
+  c.appendChild(inp);
+  const profLine=el('div',{class:'kv',style:'margin-top:10px'});
+  const draw=(fee)=>{ const p=fee-totalCost+timeAdj+bim;
+    const tt=timeAdj>0?` + $${Math.round(timeAdj)} time`:(timeAdj<0?` − $${Math.round(-timeAdj)} time`:'');
+    const bt=bim?` + $${bim} BIM`:'';
+    profLine.innerHTML=`<span class="k">Profit = $${fee} − $${totalCost}${tt}${bt}</span><span class="v ${p>=0?'pos':'neg'}" style="font-size:17px">${money(p)}</span>`; };
+  draw(Math.max(0,+inp.value||0)); inp.oninput=()=>draw(Math.max(0,+inp.value||0));
+  c.appendChild(profLine);
+  c.appendChild(el('div',{class:'note'},`Profit = fee − cost, plus a bonus for finishing under the ⌛ allowance (or −$${OVERTIME_PEN}/⌛ for going over) — exactly as your scoring sheet works. Estimates use average dice; real rolls vary.`));
+  const sub=el('button',{class:'btn role',style:'margin-top:12px'},cfg.submitLabel);
+  sub.onclick=()=>cfg.onSubmit(Math.max(0,+inp.value||0));
+  c.appendChild(sub);
+  return c;
+}
+
 function BidScreen(kind){
   const R=STATE.round, P=STATE.params[R];
   const isDesign=kind==='design';
   const party=isDesign?'designer':'contractor';
-  const fee=STATE.fees[R][kind];
   const baseline=isDesign?P.designFeeDefault:P.constructionFee;
+  const step = isDesign?'STEP 2 · ROUND '+R:'STEP 5 · ROUND '+R;
+
+  if(isCompetitive(kind)) return CompetitiveBid(kind,R,P,party,baseline,step,isDesign);
+
+  const fee=STATE.fees[R][kind]||{};
   const amProposer = me.role===party;      // team proposes their fee
   const amClient = me.role==='client';
   const title = isDesign?'Design fee negotiation':'Construction fee negotiation';
-  const step = isDesign?'STEP 2 · ROUND '+R:'STEP 5 · ROUND '+R;
 
   const c=el('div',{class:'card accent'});
   c.innerHTML=`<div class="eyebrow"><span class="step">${step}</span> ${isDesign?'Hire the design team':'Hire the contractor'}</div>
@@ -745,18 +922,16 @@ function BidScreen(kind){
     <p class="lede">The ${ROLE_NAME[party]} names a fee; the Client agrees to pay it. Baseline reference is $${baseline}. ${isDesign?'The design fee is the team\'s revenue — their profit is fee minus what they spend on architects & tools.':'The build fee is the contractor\'s revenue, minus engineers & tools (and a BIM discount if both teams used BIM).'}</p>`;
 
   const cur = fee.proposal ?? baseline;
-  c.appendChild(el('div',{class:'kv',style:'margin-top:14px'},`<span class="k">Current proposed fee</span><span class="v" style="font-size:18px;color:var(--money)">$${cur}</span>`));
 
   if(amProposer){
-    const f=el('label',{class:'field'},`<span>Your proposed fee 💰</span>`);
-    const inp=el('input',{type:'number',min:'0',step:'10',value:String(cur)});
-    f.appendChild(inp); c.appendChild(f);
-    const b=el('button',{class:'btn role',style:'margin-top:12px'},'Send proposal to Client');
-    b.onclick=()=>commit({type:'propose_fee',kind,amount:Math.max(0,+inp.value||0)});
-    c.appendChild(b);
-    c.appendChild(el('div',{class:'waiting'},`<span class="sp"></span> Waiting for the Client to accept $${cur}…`));
+    c.appendChild(BidPlanner(kind,{ label:'Your proposed fee', currentFee:fee.proposal,
+      submitLabel: fee.proposal!=null?'Update proposal to Client':'Send proposal to Client',
+      onSubmit:(amt)=>commit({type:'propose_fee',kind,amount:amt}) }));
+    if(fee.proposal!=null) c.appendChild(el('div',{class:'waiting'},`<span class="sp"></span> Sent $${fee.proposal} — waiting for the Client to accept.`));
   } else if(amClient){
-    c.appendChild(el('p',{class:'lede',style:'margin-top:12px'},`The ${ROLE_NAME[party]} proposes <b>$${cur}</b>. Accept to hire them, or counter.`));
+    c.appendChild(el('div',{class:'kv',style:'margin-top:14px'},`<span class="k">Proposed fee from ${ROLE_NAME[party]}</span><span class="v" style="font-size:18px;color:var(--money)">$${cur}</span>`));
+    c.appendChild(el('p',{class:'lede',style:'margin-top:10px'},`Accept to hire them, or counter. Reference below shows what their work will cost.`));
+    c.appendChild(LaborReference(kind));
     const f=el('label',{class:'field'},`<span>Counter / agreed fee 💰</span>`);
     const inp=el('input',{type:'number',min:'0',step:'10',value:String(cur)});
     f.appendChild(inp); c.appendChild(f);
@@ -770,6 +945,58 @@ function BidScreen(kind){
     return WaitCard(title, `Client and ${ROLE_NAME[party]} are agreeing the fee.`);
   }
   return c;
+}
+
+/* -------- Round 2 competitive sealed bidding -------- */
+function CompetitiveBid(kind,R,P,party,baseline,step,isDesign){
+  const fee=STATE.fees[R][kind]||{}; const bids=fee.bids||{};
+  const bidders=discList(kind);
+  const c=el('div',{class:'card accent'});
+  c.innerHTML=`<div class="eyebrow"><span class="step">${step}</span> Competitive bidding</div>
+    <h2>${isDesign?'Design':'Build'} contract — sealed bids</h2>
+    <p class="lede">Round 2: the two ${isDesign?'designers':'contractors'} compete for the job. Each submits their own fee; the Client hires one. A lower bid is more likely to win the contract, but leaves less room for profit once tools &amp; time are paid. Baseline reference $${baseline}.</p>`;
+
+  if(me.role===party){
+    const mine=bids[me.playerId];
+    c.appendChild(BidPlanner(kind,{ label:'Your sealed bid', currentFee:mine,
+      submitLabel: mine!=null?'Update my bid':'Submit my bid',
+      onSubmit:(amt)=>commit({type:'bid',kind,playerId:me.playerId,amount:amt}) }));
+    const st=el('div',{class:'miniboard',style:'margin-top:14px'});
+    bidders.forEach(p=>{
+      const submitted=bids[p.playerId]!=null, meMark=p.playerId===me.playerId;
+      const row=el('div',{class:'mb-row'}); row.style.setProperty('--role',ROLE_VAR[party]);
+      row.innerHTML=`<span class="mbi">${ROLE_ICON[party]}</span> <b>${esc(p.name)}${meMark?' (you)':''}</b>
+        <span class="mbv">${submitted?(meMark?'$'+bids[p.playerId]:'✓ bid submitted'):'…deciding'}</span>`;
+      st.appendChild(row);
+    });
+    c.appendChild(st);
+    if(mine!=null) c.appendChild(el('div',{class:'waiting'},`<span class="sp"></span> Bid in. Waiting for the Client to choose who to hire.`));
+    else c.appendChild(el('div',{class:'note'},'Your rival can\'t see your number — the Client sees both and picks.'));
+    return c;
+  }
+  if(me.role==='client'){
+    c.appendChild(el('div',{class:'subhead'},'Bids received — hire one'));
+    const list=el('div',{class:'miniboard'});
+    bidders.forEach(p=>{
+      const amt=bids[p.playerId];
+      const row=el('div',{class:'mb-row'}); row.style.setProperty('--role',ROLE_VAR[party]);
+      row.innerHTML=`<span class="mbi">${ROLE_ICON[party]}</span> <b>${esc(p.name)}</b>`;
+      const right=el('div',{style:'margin-left:auto;display:flex;align-items:center;gap:10px'});
+      if(amt!=null){
+        right.appendChild(el('span',{class:'mbv',style:'color:var(--money)'},`$${amt}`));
+        const hb=el('button',{class:'btn sm role'},'Hire ▸');
+        hb.onclick=()=>commit({type:'pick_winner',kind,playerId:p.playerId});
+        right.appendChild(hb);
+      } else { right.appendChild(el('span',{class:'mbv'},'waiting…')); }
+      row.appendChild(right); list.appendChild(row);
+    });
+    c.appendChild(list);
+    if(!bidders.some(p=>bids[p.playerId]!=null)) c.appendChild(el('div',{class:'waiting'},`<span class="sp"></span> Waiting for the ${isDesign?'designers':'contractors'} to submit their bids.`));
+    else c.appendChild(el('div',{class:'note'},'Tip: the cheaper bid saves you money now, but either way you still earn $50 per quality unit — so a pricier, higher-quality bidder can be worth it.'));
+    c.appendChild(LaborReference(kind));
+    return c;
+  }
+  return WaitCard(isDesign?'Design bidding':'Build bidding', `The ${isDesign?'designers':'contractors'} are submitting sealed bids; the Client will hire one.`);
 }
 
 /* -------- Work (deploy + roll) -------- */
@@ -788,8 +1015,17 @@ function WorkScreen(kind){
   const mult=isDesign?1:5;
   const step=isDesign?'STEP 3 · ROUND '+R:'STEP 6 · ROUND '+R;
 
-  if(me.role!==party){
-    return WaitCard(`${ROLE_NAME[party]} is ${isDesign?'designing':'building'}`, `They need to reach ${demandQ} 👍 in the ${isDesign?'design':'construction'} phase. So far: ${doneQ}/${demandQ} 👍, ${doneT} ⌛.`, LedgerTable(bank,demandQ,allowT,isDesign));
+  const competitive=isCompetitive(kind);
+  const winnerId=competitive?(STATE.fees[R][kind].winner):null;
+  const winnerName=(competitive&&winnerId)?((discList(kind).find(p=>p.playerId===winnerId)||{}).name):null;
+  const iAmActor = me.role===party && (!competitive || me.playerId===winnerId);
+  if(!iAmActor){
+    const who = winnerName || ROLE_NAME[party];
+    const sub = competitive
+      ? `${who} won the ${isDesign?'design':'build'} contract and is on the job. Target ${demandQ} 👍 — so far ${doneQ}/${demandQ} 👍, ${doneT} ⌛.`
+      : `They need to reach ${demandQ} 👍 in the ${isDesign?'design':'construction'} phase. So far: ${doneQ}/${demandQ} 👍, ${doneT} ⌛.`;
+    const extra = bank.rounds.length? LedgerTable(bank,demandQ,allowT,isDesign) : null;
+    return WaitCard(`${who} is ${isDesign?'designing':'building'}`, sub, extra);
   }
 
   const c=el('div',{class:'card accent'});
@@ -887,17 +1123,19 @@ function ResultScreen(isFinal){
   const head=el('div',{class:'card'});
   head.innerHTML=`<div class="eyebrow"><span class="step">${isFinal?'FINAL':'STEP 7 · ROUND '+R}</span> Project completion</div>
     <h2>${isFinal?'Both rounds complete':'Round '+R+' delivered'}</h2>
-    <p class="lede">Quality is rewarded, delays are penalised. ${res.bimDiscount?`BIM paid off: the contractor saved $${res.bimDiscount}.`:''}</p>
+    <p class="lede">Quality is rewarded, delays are penalised. ${res.bimDiscount?`BIM paid off: the contractor saved $${res.bimDiscount}. `:''}${(res.designWinner||res.contractorWinner)?`Competitive round — ${esc(res.designWinner||'?')} won the design and ${esc(res.contractorWinner||'?')} won the build; the rival bidders earned $0.`:''}</p>
     <div class="kv" style="margin-top:12px"><span class="k">Quality delivered 👍</span><span class="v">${res.totalQ} / ${P.qualityDemand}</span></div>
     <div class="kv"><span class="k">Time taken ⌛</span><span class="v">${res.totalT} / ${P.timeDemand} ${res.totalT>P.timeDemand?'· <span style="color:var(--loss)">'+(res.totalT-P.timeDemand)+' over</span>':'· on time'}</span></div>
     <div class="kv"><span class="k">Design fee / Build fee</span><span class="v">$${res.designFee} / $${res.constructionFee}</span></div>`;
   c.appendChild(head);
 
   const grid=el('div',{class:'result-grid'});
+  const dName = res.designWinner? esc(res.designWinner) : 'Design Team';
+  const kName = res.contractorWinner? esc(res.contractorWinner) : 'Contractor';
   const parties=[
     ['client','Client',res.clientProfit,`budget − fees + 👍×${QUALITY_BONUS} − overtime`],
-    ['designer','Design Team',res.designProfit,`fee − spend − overtime${res.dOver?' − OH':''}`],
-    ['contractor','Contractor',res.contractorProfit,`fee − spend − overtime${res.bimDiscount?' + BIM $'+res.bimDiscount:''}`],
+    ['designer',dName,res.designProfit,`${res.designWinner?'won the bid · ':''}fee − spend − overtime${res.dOver?' − OH':''}`],
+    ['contractor',kName,res.contractorProfit,`${res.contractorWinner?'won the bid · ':''}fee − spend − overtime${res.bimDiscount?' + BIM $'+res.bimDiscount:''}`],
   ];
   parties.forEach(([r,nm,val,form])=>{
     const p=el('div',{class:'pcard'}); p.style.setProperty('--role',ROLE_VAR[r]);
@@ -1009,6 +1247,11 @@ function FooterControls(){
     const sw=el('button',{class:'tinylink'},'Switch group');
     sw.onclick=()=>leaveRoom();
     row.appendChild(sw);
+  }
+  if(SESSION){
+    const ls=el('button',{class:'tinylink'},'Leave session');
+    ls.onclick=()=>leaveSession();
+    row.appendChild(ls);
   }
   c.appendChild(row);
   return c;
