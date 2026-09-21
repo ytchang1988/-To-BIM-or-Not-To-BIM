@@ -382,7 +382,7 @@ function reduce(state, a){
       s.phase='design_bid';
       break;
     }
-    case 'propose_fee':{ ensureRound(s,R); s.fees[R][a.kind].proposal=a.amount; break; }
+    case 'propose_fee':{ ensureRound(s,R); s.fees[R][a.kind].proposal=a.amount; if(a.plan) s.fees[R][a.kind].plan=a.plan; break; }
     case 'agree_fee':{
       ensureRound(s,R); s.fees[R][a.kind].agreed=a.amount; s.fees[R][a.kind].proposal=a.amount;
       if(a.kind==='design') s.phase='design';
@@ -393,6 +393,7 @@ function reduce(state, a){
       ensureRound(s,R);
       if(!s.fees[R][a.kind].bids) s.fees[R][a.kind].bids={};
       s.fees[R][a.kind].bids[a.playerId]=a.amount;
+      if(a.plan){ if(!s.fees[R][a.kind].plans) s.fees[R][a.kind].plans={}; s.fees[R][a.kind].plans[a.playerId]=a.plan; }
       break;
     }
     case 'pick_winner':{                  // Round 2 competitive: client hires one bidder
@@ -951,9 +952,19 @@ function BidPlanner(kind,cfg){
   c.appendChild(profLine);
   c.appendChild(el('div',{class:'note'},`Profit = fee − cost, plus a bonus for finishing under the ⌛ allowance (or −$${OVERTIME_PEN}/⌛ for going over) — exactly as your scoring sheet works. Estimates use average dice; real rolls vary.`));
   const sub=el('button',{class:'btn role',style:'margin-top:12px'},cfg.submitLabel);
-  sub.onclick=()=>cfg.onSubmit(Math.max(0,+inp.value||0));
+  sub.onclick=()=>cfg.onSubmit(Math.max(0,+inp.value||0), {tier:pl.tier,tool:pl.tool,rounds:pl.rounds});
   c.appendChild(sub);
   return c;
+}
+
+/* Client-facing summary of a bidder's plan — combination + expected quality/time, NEVER cost. */
+function planText(kind,plan){
+  if(!plan||!plan.tier||!plan.tool) return '';
+  const isDesign=kind==='design', mult=isDesign?1:5, tl=isDesign?'Architect':'Engineer';
+  const name={Super:'Super '+tl,Senior:'Senior '+tl,Junior:'Junior '+tl}[plan.tier]||plan.tier;
+  const N=Math.max(1,+plan.rounds||1);
+  const eqR=(EV(plan.tier).q+EV(TOOL_CURVE[plan.tool]).q)*mult, etR=(EV(plan.tier).t+EV(TOOL_CURVE[plan.tool]).t)*mult;
+  return `${name} + ${plan.tool}, aiming for ${N} round${N>1?'s':''} · expected ≈ ${fmt1(eqR*N)} 👍, ${fmt1(etR*N)} ⌛`;
 }
 
 function BidScreen(kind){
@@ -973,17 +984,18 @@ function BidScreen(kind){
   const c=el('div',{class:'card accent'});
   c.innerHTML=`<div class="eyebrow"><span class="step">${step}</span> ${isDesign?'Hire the design team':'Hire the contractor'}</div>
     <h2>${title}</h2>
-    <p class="lede">The ${ROLE_NAME[party]} names a fee; the Client agrees to pay it. Baseline reference is $${baseline}. ${isDesign?'The design fee is the team\'s revenue — their profit is fee minus what they spend on architects & tools.':'The build fee is the contractor\'s revenue, minus engineers & tools (and a BIM discount if both teams used BIM).'}</p>`;
+    <p class="lede">The ${ROLE_NAME[party]} proposes a fee for their work, and the Client agrees what to pay. Baseline reference $${baseline}.</p>`;
 
   const cur = fee.proposal ?? baseline;
 
   if(amProposer){
     c.appendChild(BidPlanner(kind,{ label:'Your proposed fee', currentFee:fee.proposal,
       submitLabel: fee.proposal!=null?'Update proposal to Client':'Send proposal to Client',
-      onSubmit:(amt)=>commit({type:'propose_fee',kind,amount:amt}) }));
+      onSubmit:(amt,plan)=>commit({type:'propose_fee',kind,amount:amt,plan}) }));
     if(fee.proposal!=null) c.appendChild(el('div',{class:'waiting'},`<span class="sp"></span> Sent $${fee.proposal} — waiting for the Client to accept.`));
   } else if(amClient){
     c.appendChild(el('div',{class:'kv',style:'margin-top:14px'},`<span class="k">Proposed fee from ${ROLE_NAME[party]}</span><span class="v" style="font-size:18px;color:var(--money)">$${cur}</span>`));
+    if(fee.plan) c.appendChild(el('div',{class:'note'},`<b>${ROLE_NAME[party]}'s plan:</b> ${planText(kind,fee.plan)}`));
     c.appendChild(el('p',{class:'lede',style:'margin-top:10px'},`Accept to hire them, or make a counter-offer. Remember: you earn $${QUALITY_BONUS} for every unit of quality delivered, so a higher fee can still be worth it.`));
     const f=el('label',{class:'field'},`<span>Counter / agreed fee 💰</span>`);
     const inp=el('input',{type:'number',min:'0',step:'10',value:String(cur)});
@@ -1007,13 +1019,13 @@ function CompetitiveBid(kind,R,P,party,baseline,step,isDesign){
   const c=el('div',{class:'card accent'});
   c.innerHTML=`<div class="eyebrow"><span class="step">${step}</span> Competitive bidding</div>
     <h2>${isDesign?'Design':'Build'} contract — sealed bids</h2>
-    <p class="lede">Round 2: the two ${isDesign?'designers':'contractors'} compete for the job. Each submits their own fee; the Client hires one. A lower bid is more likely to win the contract, but leaves less room for profit once tools &amp; time are paid. Baseline reference $${baseline}.</p>`;
+    <p class="lede">Round 2: the ${isDesign?'designers':'contractors'} compete for the job — each submits their own sealed fee, and the Client hires one. Baseline reference $${baseline}.</p>`;
 
   if(me.role===party){
     const mine=bids[me.playerId];
     c.appendChild(BidPlanner(kind,{ label:'Your sealed bid', currentFee:mine,
       submitLabel: mine!=null?'Update my bid':'Submit my bid',
-      onSubmit:(amt)=>commit({type:'bid',kind,playerId:me.playerId,amount:amt}) }));
+      onSubmit:(amt,plan)=>commit({type:'bid',kind,playerId:me.playerId,amount:amt,plan}) }));
     const st=el('div',{class:'miniboard',style:'margin-top:14px'});
     bidders.forEach(p=>{
       const submitted=bids[p.playerId]!=null, meMark=p.playerId===me.playerId;
@@ -1024,17 +1036,18 @@ function CompetitiveBid(kind,R,P,party,baseline,step,isDesign){
     });
     c.appendChild(st);
     if(mine!=null) c.appendChild(el('div',{class:'waiting'},`<span class="sp"></span> Bid in. Waiting for the Client to choose who to hire.`));
-    else c.appendChild(el('div',{class:'note'},'Your rival can\'t see your number — the Client sees both and picks.'));
+    else c.appendChild(el('div',{class:'note'},'A lower bid is likelier to win, but leaves less room for profit (see the planner above). Your rival can\'t see your number — the Client sees both and picks.'));
     return c;
   }
   if(me.role==='client'){
     c.appendChild(el('div',{class:'subhead'},'Bids received — hire one'));
     const list=el('div',{class:'miniboard'});
+    const plans=fee.plans||{};
     bidders.forEach(p=>{
-      const amt=bids[p.playerId];
-      const row=el('div',{class:'mb-row'}); row.style.setProperty('--role',ROLE_VAR[party]);
-      row.innerHTML=`<span class="mbi">${ROLE_ICON[party]}</span> <b>${esc(p.name)}</b>`;
-      const right=el('div',{style:'margin-left:auto;display:flex;align-items:center;gap:10px'});
+      const amt=bids[p.playerId]; const plan=plans[p.playerId];
+      const row=el('div',{class:'mb-row',style:'align-items:flex-start'}); row.style.setProperty('--role',ROLE_VAR[party]);
+      row.innerHTML=`<span class="mbi">${ROLE_ICON[party]}</span> <span><b>${esc(p.name)}</b>${plan?`<div style="font-size:12px;color:var(--muted);font-family:var(--ff-mono);margin-top:3px">${planText(kind,plan)}</div>`:''}</span>`;
+      const right=el('div',{style:'margin-left:auto;display:flex;align-items:center;gap:10px;flex-shrink:0'});
       if(amt!=null){
         right.appendChild(el('span',{class:'mbv',style:'color:var(--money)'},`$${amt}`));
         const hb=el('button',{class:'btn sm role'},'Hire ▸');
@@ -1120,11 +1133,13 @@ function WorkScreen(kind){
     <div class="diewrap"><div class="dl">${ui.tier?DIE_NAME[tierCol]+' · '+tiersName[ui.tier]:tierLabel}</div><div class="die ${tierCol}" id="dieTier">${pips(1)}</div></div>
     <div class="diewrap"><div class="dl">${ui.tool?DIE_NAME[toolCol]+' · '+ui.tool:'tool'}</div><div class="die ${toolCol}" id="dieTool">${pips(1)}</div></div>`;
   c.appendChild(dz);
-  c.appendChild(el('div',{class:'rollout',id:'rollout'}, ui.tier&&ui.tool?`Ready: <b>${tiersName[ui.tier]}</b> + <b>${ui.tool}</b> — cost $${cst[ui.tier]+cst[ui.tool]}`:'Pick an '+tierLabel+' and a tool to roll.'));
+  c.appendChild(el('div',{class:'rollout',id:'rollout'}, met
+    ? `<b style="color:var(--quality)">✓ Quality goal reached (${doneQ}/${demandQ} 👍).</b> No more rounds needed — deliver below. Extra rounds only cost you more.`
+    : (ui.tier&&ui.tool?`Ready: <b>${tiersName[ui.tier]}</b> + <b>${ui.tool}</b> — cost $${cst[ui.tier]+cst[ui.tool]}`:'Pick an '+tierLabel+' and a tool to roll.')));
 
-  const roll=el('button',{class:'btn gold',style:'margin-top:6px'},'🎲 Deploy & roll');
-  roll.disabled = !(ui.tier&&ui.tool);
-  roll.onclick=()=>doRoll(kind,tiersName);
+  const roll=el('button',{class:'btn gold',style:'margin-top:6px'}, met?'Goal reached ✓ — no more rolls':'🎲 Deploy & roll');
+  roll.disabled = met || !(ui.tier&&ui.tool);
+  roll.onclick=()=>{ if(met) return; doRoll(kind,tiersName); };
   c.appendChild(roll);
 
   c.appendChild(el('div',{class:'hr'}));
