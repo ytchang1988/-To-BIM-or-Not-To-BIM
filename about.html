@@ -1,0 +1,241 @@
+<meta charset="utf-8">
+<title>To BIM or Not To BIM</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="A live, multiplayer classroom game teaching AEC students the economics of BIM vs CAD and workforce choices across a building project.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=IBM+Plex+Mono:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<style>
+:root{
+  --paper:#F4F1E9; --surface:#FBFAF5; --surface2:#EFEBE0; --ink:#17202A; --muted:#5C6772;
+  --line:#DBD5C7; --line2:#C9C2B0; --gold:#B07D18;
+  --client:#2F6E8F; --designer:#7A5CA6; --contractor:#C4622E;
+  --die-green:#2E9E6A; --die-yellow:#C08A1C; --die-red:#C4462F;
+  --shadow:0 1px 2px rgba(30,25,15,.06),0 10px 30px rgba(30,25,15,.08);
+  --grid:rgba(47,110,143,.05);
+  --ff-disp:'Archivo',system-ui,sans-serif; --ff-body:'IBM Plex Sans',system-ui,sans-serif; --ff-mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --paper:#0F161E; --surface:#18222E; --surface2:#1E2A38; --ink:#E7ECF1; --muted:#93A2B2;
+  --line:#293748; --line2:#35485C; --gold:#E7B24E;
+  --client:#54A2C7; --designer:#A98BD4; --contractor:#E1904F;
+  --die-green:#34B87E; --die-yellow:#D19A28; --die-red:#E0573F;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 12px 34px rgba(0,0,0,.42); --grid:rgba(90,166,203,.06);
+}}
+:root[data-theme="dark"]{
+  --paper:#0F161E; --surface:#18222E; --surface2:#1E2A38; --ink:#E7ECF1; --muted:#93A2B2;
+  --line:#293748; --line2:#35485C; --gold:#E7B24E;
+  --client:#54A2C7; --designer:#A98BD4; --contractor:#E1904F;
+  --die-green:#34B87E; --die-yellow:#D19A28; --die-red:#E0573F;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 12px 34px rgba(0,0,0,.42); --grid:rgba(90,166,203,.06);
+}
+*{box-sizing:border-box} html,body{margin:0} html{scroll-behavior:smooth}
+body{font-family:var(--ff-body);color:var(--ink);background:var(--paper);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:32px 32px;
+  -webkit-text-size-adjust:100%;line-height:1.6}
+.wrap{max-width:1060px;margin:0 auto;padding:0 22px}
+h1,h2,h3{font-family:var(--ff-disp);margin:0;line-height:1.05;letter-spacing:-.02em;text-wrap:balance}
+a{color:var(--client)} .mono{font-family:var(--ff-mono)}
+img,video,iframe{max-width:100%}
+:focus-visible{outline:3px solid var(--client);outline-offset:3px;border-radius:6px}
+
+/* nav */
+.nav{position:sticky;top:0;z-index:30;background:color-mix(in srgb,var(--paper) 88%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.nav-in{max-width:1060px;margin:0 auto;padding:12px 22px;display:flex;align-items:center;gap:16px}
+.brand{font-family:var(--ff-disp);font-weight:800;font-size:16px;display:flex;align-items:center;gap:9px}
+.bimlogo{font-size:12px;font-weight:800;color:var(--paper);background:var(--ink);padding:3px 7px;border-radius:6px;letter-spacing:.06em}
+.nav .links{margin-left:auto;display:flex;align-items:center;gap:20px}
+.nav .links a{color:var(--muted);text-decoration:none;font-weight:600;font-size:14px}
+.nav .links a:hover{color:var(--ink)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;font-family:var(--ff-body);font-weight:700;font-size:15px;padding:12px 20px;border-radius:12px;border:1px solid var(--line2);background:var(--surface2);color:var(--ink);text-decoration:none;cursor:pointer;transition:.15s}
+.btn:hover{border-color:var(--ink);transform:translateY(-1px)}
+.btn.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.gold{background:var(--gold);color:#241a05;border-color:transparent}
+.btn.sm{padding:9px 14px;font-size:13.5px}
+.icon-btn{background:none;border:1px solid var(--line2);border-radius:9px;width:38px;height:38px;display:grid;place-items:center;color:var(--muted);cursor:pointer;font-size:15px}
+@media(max-width:720px){ .nav .links a:not(.btn){display:none} }
+
+/* hero */
+.hero{padding:74px 0 40px;text-align:center;position:relative}
+.eyebrow{font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--gold)}
+.hero h1{font-size:clamp(40px,8vw,80px);font-weight:900;margin:16px 0 6px;letter-spacing:-.035em}
+.hero h1 em{font-style:normal;color:var(--gold)}
+.lede{font-size:clamp(16px,2.4vw,20px);color:var(--muted);max-width:64ch;margin:14px auto 0}
+.cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px}
+.hero-meta{display:flex;gap:22px;justify-content:center;flex-wrap:wrap;margin-top:26px;color:var(--muted);font-size:13.5px;font-weight:600}
+.hero-meta span{display:inline-flex;align-items:center;gap:7px}
+.dot{width:11px;height:11px;border-radius:4px;display:inline-block}
+.dice-row{display:flex;gap:10px;justify-content:center;margin-top:34px}
+.die3{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;color:#fff;font-family:var(--ff-mono);font-weight:700;font-size:19px;box-shadow:var(--shadow);transform:rotate(-6deg)}
+.die3:nth-child(2){transform:rotate(4deg)} .die3:nth-child(3){transform:rotate(-3deg)}
+
+section{padding:52px 0;border-top:1px solid var(--line)}
+.sec-head{text-align:center;margin-bottom:8px}
+.sec-head .eyebrow{color:var(--muted)}
+.sec-head h2{font-size:clamp(26px,4.5vw,38px);margin-top:8px}
+.sec-head p{color:var(--muted);max-width:60ch;margin:12px auto 0}
+
+/* media */
+.media{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:var(--shadow);margin-top:26px}
+.media h3{font-size:17px;display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.ratio{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:12px;overflow:hidden}
+.ratio>video,.ratio>iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.media .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.media .cap{color:var(--muted);font-size:13.5px}
+.slidefallback{position:absolute;inset:0;display:grid;place-content:center;gap:12px;text-align:center;color:var(--muted);background:var(--surface2);padding:24px}
+
+/* features */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-top:28px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:var(--shadow);border-top:3px solid var(--tc,var(--gold))}
+.card .ic{width:42px;height:42px;border-radius:11px;background:color-mix(in srgb,var(--tc,var(--gold)) 16%,var(--surface));color:var(--tc,var(--gold));display:grid;place-items:center;font-size:20px;font-weight:800}
+.card h3{font-size:17px;margin:13px 0 6px}
+.card p{color:var(--muted);font-size:14px;margin:0}
+
+/* steps */
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;margin-top:28px;counter-reset:s}
+.step{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:var(--shadow);position:relative}
+.step::before{counter-increment:s;content:counter(s);font-family:var(--ff-mono);font-weight:700;font-size:13px;color:var(--paper);background:var(--ink);width:26px;height:26px;border-radius:8px;display:grid;place-items:center}
+.step h3{font-size:16px;margin:12px 0 5px}
+.step p{color:var(--muted);font-size:13.5px;margin:0}
+.step a{font-weight:600}
+
+/* cite */
+.cite{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--gold);border-radius:14px;padding:22px;box-shadow:var(--shadow);margin-top:24px}
+.cite .t{font-family:var(--ff-disp);font-weight:700;font-size:18px}
+.cite .ref{font-size:14.5px;color:var(--muted);margin-top:10px;font-family:var(--ff-mono);line-height:1.7}
+.cite .ref b{color:var(--ink)}
+.footer{border-top:1px solid var(--line);padding:34px 0;color:var(--muted);font-size:13.5px;text-align:center}
+.footer a{color:var(--muted)}
+</style>
+
+<nav class="nav"><div class="nav-in">
+  <div class="brand"><span class="bimlogo">BIM</span> To BIM or Not To BIM</div>
+  <div class="links">
+    <a href="#how">How to play</a>
+    <a href="#inside">Inside</a>
+    <a href="#teachers">For teachers</a>
+    <a href="#cite">Cite</a>
+    <a class="btn primary sm" href="index.html">▶ Play</a>
+    <button class="icon-btn" id="themeBtn" title="Toggle light / dark" aria-label="Toggle theme">◑</button>
+  </div>
+</div></nav>
+
+<header class="hero"><div class="wrap">
+  <div class="eyebrow">A “BIM” board game for AEC projects</div>
+  <h1>To <em>BIM</em>,<br>or not to BIM</h1>
+  <p class="lede">A live, multiplayer classroom game: a client, design team and contractor weigh different tiers of workforce and digital tools (BIM vs CAD) across a building project — rolling for quality, time and profit.</p>
+  <div class="cta">
+    <a class="btn gold" href="index.html">▶ Play / host a session</a>
+    <a class="btn" href="#how">Watch how to play</a>
+  </div>
+  <div class="hero-meta">
+    <span><span class="dot" style="background:var(--die-green)"></span> Live on any phone</span>
+    <span><span class="dot" style="background:var(--gold)"></span> Free &amp; open</span>
+    <span><span class="dot" style="background:var(--client)"></span> Up to 20 groups</span>
+  </div>
+  <div class="dice-row" aria-hidden="true">
+    <span class="die3" style="background:var(--die-green)">3</span>
+    <span class="die3" style="background:var(--die-yellow)">2</span>
+    <span class="die3" style="background:var(--die-red)">1</span>
+  </div>
+</div></header>
+
+<section id="how"><div class="wrap">
+  <div class="sec-head">
+    <div class="eyebrow">Learn the game</div>
+    <h2>How to play</h2>
+    <p>Watch the walkthrough, then step through the teaching slides. Together they cover the roles, the BIM-vs-CAD decision, the dice, and how profit is scored.</p>
+  </div>
+
+  <div class="media">
+    <h3>▶ Video walkthrough</h3>
+    <div class="ratio"><video controls preload="metadata" playsinline><source src="how-to-play.mp4" type="video/mp4">Your browser can’t play this video — <a href="how-to-play.mp4">download it</a>.</video></div>
+    <div class="row"><a class="btn sm" href="how-to-play.mp4" download>⬇ Download video</a><span class="cap">~2 min · MP4</span></div>
+  </div>
+
+  <div class="media">
+    <h3>▣ Teaching slides</h3>
+    <div class="ratio"><div id="slideMount" class="slidefallback"><div>Loading slide preview…</div></div></div>
+    <div class="row"><a class="btn sm" href="how-to-play.pptx" download>⬇ Download slides (.pptx)</a><span class="cap">Full rules &amp; dice tables</span></div>
+  </div>
+</div></section>
+
+<section id="inside"><div class="wrap">
+  <div class="sec-head">
+    <div class="eyebrow">The mechanics</div>
+    <h2>Inside the game</h2>
+    <p>A faithful digital rebuild of the original board game — every dice table, cost and formula preserved.</p>
+  </div>
+  <div class="grid">
+    <div class="card" style="--tc:var(--client)"><div class="ic">◈</div><h3>Three parties, one project</h3><p>A Client hires and pays a Design Team and a Contractor. Each has its own screen, incentives and profit.</p></div>
+    <div class="card" style="--tc:var(--designer)"><div class="ic">✎</div><h3>Workforce &amp; tools</h3><p>Choose Super / Senior / Junior talent and BIM vs CAD — each a coloured die with its own odds of quality and time.</p></div>
+    <div class="card" style="--tc:var(--die-green)"><div class="ic">🎲</div><h3>Roll for outcomes</h3><p>Deploy a combination and roll. Better odds cost more; the dice guide shows every probability.</p></div>
+    <div class="card" style="--tc:var(--contractor)"><div class="ic">💰</div><h3>Bid, build, profit</h3><p>Negotiate fees, hit the quality target, beat the clock — profit rewards quality and punishes delay.</p></div>
+    <div class="card" style="--tc:var(--gold)"><div class="ic">📡</div><h3>Live on phones</h3><p>Everyone in a group shares one live board across their devices — no installs, just a link.</p></div>
+    <div class="card" style="--tc:var(--client)"><div class="ic">📊</div><h3>Class dashboard</h3><p>Project every group’s results live, then export the whole session to a spreadsheet.</p></div>
+  </div>
+</div></section>
+
+<section id="teachers"><div class="wrap">
+  <div class="sec-head">
+    <div class="eyebrow">Run it with your class</div>
+    <h2>For teachers</h2>
+    <p>Host a session in seconds, or run your own private copy for free.</p>
+  </div>
+  <div class="steps">
+    <div class="step"><h3>Host a session</h3><p>Open the game, enter your school &amp; date, set the number of groups, and get a code.</p></div>
+    <div class="step"><h3>Share the link</h3><p>Students open it, pick their group and role. Five-plus phones per group, synced live.</p></div>
+    <div class="step"><h3>Project the board</h3><p>Open the results dashboard on the projector — it updates as each group finishes.</p></div>
+    <div class="step"><h3>Export &amp; keep</h3><p>Download the full session (profits, choices, names) as an Excel workbook.</p></div>
+  </div>
+  <div class="cta" style="justify-content:flex-start;margin-top:26px">
+    <a class="btn primary" href="index.html">▶ Host a session</a>
+    <a class="btn" href="dashboard.html">📊 Results dashboard</a>
+    <a class="btn" id="repoLink" href="https://github.com/ytchang1988/-To-BIM-or-Not-To-BIM" target="_blank" rel="noopener">⌨ Self-host (free) on GitHub</a>
+  </div>
+  <p class="cap" style="color:var(--muted);font-size:13.5px;margin-top:14px">Runs free on GitHub Pages + a free Firebase database — each teacher can host their own private copy. Setup guide in the repository’s README.</p>
+</div></section>
+
+<section id="cite"><div class="wrap">
+  <div class="sec-head">
+    <div class="eyebrow">Research</div>
+    <h2>Cite this work</h2>
+    <p>This game accompanies our peer-reviewed publication. If you use or adapt it, please cite:</p>
+  </div>
+  <div class="cite">
+    <div class="t">To BIM or Not to BIM: A Simulation Game for Teaching AEC Students the Key Mechanisms in Project Delivery</div>
+    <div class="ref"><b>[Authors]</b> ([Year]). <em>To BIM or Not to BIM: A Simulation Game for Teaching AEC Students the Key Mechanisms in Project Delivery.</em> [Journal / Conference, vol(issue), pages]. <!-- ✏️ Edit authors, year and venue here --></div>
+    <div class="cta" style="justify-content:flex-start;margin-top:16px">
+      <a class="btn gold" href="https://www.researchgate.net/publication/372456198_To_BIM_or_Not_to_BIM_A_Simulation_Game_for_Teaching_AEC_Students_the_Key_Mechanisms_in_Project_Delivery" target="_blank" rel="noopener">View publication on ResearchGate →</a>
+    </div>
+  </div>
+</div></section>
+
+<footer class="footer"><div class="wrap">
+  To BIM or Not To BIM — an open classroom simulation for AEC education.<br>
+  <a href="index.html">Play</a> · <a href="dashboard.html">Dashboard</a> · <a href="https://www.researchgate.net/publication/372456198_To_BIM_or_Not_to_BIM_A_Simulation_Game_for_Teaching_AEC_Students_the_Key_Mechanisms_in_Project_Delivery" target="_blank" rel="noopener">Publication</a>
+</div></footer>
+
+<script>
+// theme toggle
+(function(){ const K='bimgame_theme'; try{const t=localStorage.getItem(K); if(t)document.documentElement.dataset.theme=t;}catch(e){}
+  document.getElementById('themeBtn').onclick=()=>{ const cur=document.documentElement.dataset.theme; const sysDark=matchMedia('(prefers-color-scheme:dark)').matches; const nx=cur?(cur==='dark'?'light':'dark'):(sysDark?'light':'dark'); document.documentElement.dataset.theme=nx; try{localStorage.setItem(K,nx);}catch(e){} };
+})();
+
+// slides: embed via Microsoft Office online viewer when hosted over http(s); else offer download
+(function(){
+  const mount=document.getElementById('slideMount');
+  const httpOK=location.protocol==='http:'||location.protocol==='https:';
+  const pptxUrl=new URL('how-to-play.pptx', location.href).href;
+  if(httpOK){
+    const iframe=document.createElement('iframe');
+    iframe.src='https://view.officeapps.live.com/op/embed.aspx?src='+encodeURIComponent(pptxUrl);
+    iframe.setAttribute('allowfullscreen','');
+    iframe.title='Teaching slides';
+    mount.replaceWith(iframe);
+  } else {
+    mount.innerHTML='<div><b>Slide preview appears once the page is online.</b><br>Use the download button below to open the slides now.</div>';
+  }
+})();
+</script>
