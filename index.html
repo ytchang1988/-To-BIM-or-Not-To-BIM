@@ -517,12 +517,13 @@ function normCode(x){ return String(x||'').trim().toUpperCase().replace(/[^A-Z0-
 function normSession(x){ return String(x||'').trim().toUpperCase().replace(/[^A-Z0-9-]/g,'').slice(0,24); }
 function stampCode(dateStr){ const d=dateStr&&!isNaN(new Date(dateStr))?new Date(dateStr):new Date(); const p=n=>String(n).padStart(2,'0'); return ''+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'-'+Math.random().toString(36).slice(2,6).toUpperCase(); }
 
-function hostSession(university,date){
+function hostSession(university,date,groups){
   const code=stampCode(date);
-  DB.ref('sessions/'+code+'/meta').set({university:university||'',date:date||'',created:Date.now()}).catch(e=>console.warn('meta write',e));
+  DB.ref('sessions/'+code+'/meta').set({university:university||'',date:date||'',groups:groups||9,created:Date.now()}).catch(e=>console.warn('meta write',e));
   me.room=null; me.role=null; saveIdentity();
   enterSession(code);
 }
+function sessionGroups(){ return Math.max(1,Math.min(20,(SESSION_META&&+SESSION_META.groups)||9)); }
 function enterSession(code){
   code=normSession(code); if(!code||!DB) return;
   SESSION=code; me.session=code; saveIdentity();
@@ -684,7 +685,8 @@ function Landing(){
       <p class="lede">Create a private session for your class. You'll get a code and a link to share with your students — each session keeps its own live board and its own records.</p>`;
     const uF=el('label',{class:'field'},'<span>University / school</span>'); const uI=el('input',{type:'text',placeholder:'e.g. National Taiwan University',maxlength:'60'}); uF.appendChild(uI); card.appendChild(uF);
     const dF=el('label',{class:'field'},'<span>Play date</span>'); const dI=el('input',{type:'date'}); dI.value=new Date().toISOString().slice(0,10); dF.appendChild(dI); card.appendChild(dF);
-    const b=el('button',{class:'btn gold',style:'margin-top:16px'},'Create session ▸'); b.onclick=()=>hostSession(uI.value.trim(),dI.value); card.appendChild(b);
+    const gF=el('label',{class:'field'},'<span>Number of groups</span>'); const gI=el('input',{type:'number',min:'1',max:'20',step:'1',value:'9'}); gF.appendChild(gI); card.appendChild(gF);
+    const b=el('button',{class:'btn gold',style:'margin-top:16px'},'Create session ▸'); b.onclick=()=>hostSession(uI.value.trim(),dI.value,Math.max(1,Math.min(20,+gI.value||9))); card.appendChild(b);
     const back=el('button',{class:'tinylink',style:'display:block;margin:12px auto 0'},'← back'); back.onclick=()=>{ui.landing='choose';render();}; card.appendChild(back);
   } else if(mode==='join'){
     card.innerHTML=`<div class="eyebrow"><span class="step">JOIN</span> Enter a session</div>
@@ -696,7 +698,7 @@ function Landing(){
   } else {
     card.innerHTML=`<div class="eyebrow"><span class="step">WELCOME</span> A “BIM” board game for AEC projects</div>
       <h2>To BIM, or not to BIM</h2>
-      <p class="lede">A live, multiplayer classroom game: a client, design team and contractor weigh BIM vs CAD across a building project — rolling for quality, time and profit.</p>`;
+      <p class="lede">A live, multiplayer classroom game: a client, design team and contractor weigh different tiers of workforce and digital tools (BIM vs CAD) across a building project — rolling for quality, time and profit.</p>`;
     const row=el('div',{style:'display:grid;gap:10px;margin-top:16px'});
     const h=el('button',{class:'btn primary'},'🎓 Host a session (teacher)'); h.onclick=()=>{ui.landing='host';render();};
     const j=el('button',{class:'btn'},'👋 Join a session (student)'); j.onclick=()=>{ui.landing='join';render();};
@@ -733,7 +735,7 @@ function RoomPicker(){
 
   card.appendChild(el('div',{class:'subhead'},'Choose group'));
   const grid=el('div',{class:'opt-grid',style:'grid-template-columns:repeat(3,1fr)'});
-  for(let i=1;i<=9;i++){
+  for(let i=1;i<=sessionGroups();i++){
     const b=el('button',{class:'opt',style:'justify-content:center;padding:15px 0'},`<span class="on" style="font-family:var(--ff-mono);font-size:17px">Group ${i}</span>`);
     b.onclick=()=>{ if(!me.name){ nameI.focus(); nameI.style.borderColor='var(--loss)'; return; } joinRoom(String(i)); };
     grid.appendChild(b);

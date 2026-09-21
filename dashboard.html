@@ -158,7 +158,7 @@ const ROLE={client:{name:'Client',c:'var(--client)'},designer:{name:'Design Team
 /* ---------- state ---------- */
 const LS_ROOMS='bimdash_rooms', LS_THEME='bimgame_theme';
 let DEFAULT_ROOMS=['1','2','3','4','5','6','7','8','9'];
-let rooms=loadRooms();
+let rooms=[];   // populated from the session's group count
 let raw={};                 // code -> room state (or null)
 let round='total', tab='overview';
 let DB=null;
@@ -450,7 +450,14 @@ function boot(){
   if(cfg && cfg.databaseURL && cfg.databaseURL.indexOf('PASTE')<0 && window.firebase){
     try{ firebase.initializeApp(cfg); DB=firebase.database();
       DB.ref('.info/connected').on('value',s=>setLive(!!s.val()));
-      if(SESSION){ DB.ref('sessions/'+SESSION+'/meta').once('value').then(s=>{META=s.val();renderMeta();}).catch(()=>{}); rooms.forEach(watch); render(); }
+      if(SESSION){
+        DB.ref('sessions/'+SESSION+'/meta').once('value').then(s=>{
+          META=s.val()||{}; renderMeta();
+          const n=Math.max(1,Math.min(30,(+META.groups)||9));
+          rooms=Array.from({length:n},(_,i)=>String(i+1));
+          rooms.forEach(watch); render();
+        }).catch(()=>{ rooms=DEFAULT_ROOMS.slice(); rooms.forEach(watch); render(); });
+      }
       else { renderTabs(); promptSession(); }
     }catch(e){ console.error('Firebase init failed',e); $('#liveTxt').textContent='config error'; render(); }
   } else { $('#liveTxt').textContent='no Firebase config'; render(); }
