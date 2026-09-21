@@ -212,6 +212,8 @@ label.field>span{font-size:12px;font-weight:600;color:var(--muted);letter-spacin
 .pcard .pl{font-size:11.5px;color:var(--muted);margin-top:3px;font-family:var(--ff-mono)}
 
 .note{font-size:12.5px;color:var(--muted);background:var(--surface2);border:1px solid var(--line);border-left:3px solid var(--gold);border-radius:8px;padding:10px 12px;margin-top:14px}
+.bidclock{margin:12px 0 2px;text-align:center;font-family:var(--ff-mono);font-weight:700;font-size:15px;padding:10px 12px;border-radius:11px;background:color-mix(in srgb,var(--time) 13%,var(--surface));border:1px solid color-mix(in srgb,var(--time) 40%,var(--line2));color:var(--time)}
+.bidclock.over{background:color-mix(in srgb,var(--loss) 15%,var(--surface));border-color:var(--loss);color:var(--loss);animation:pulse 1.2s infinite}
 .waiting{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:14px;padding:14px;background:var(--surface2);border:1px dashed var(--line2);border-radius:12px;margin-top:14px}
 .waiting .sp{width:15px;height:15px;border:2px solid var(--line2);border-top-color:var(--role,var(--gold));border-radius:50%;animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -371,8 +373,8 @@ function reduce(state, a){
       s.params = s.params||{};
       s.params[R]=makeParams(a.constructionFee);
       if(R===2){
-        // Round 2: designers & contractors bid competitively (sealed bids)
-        s.fees[R].design={bids:{},winner:null,agreed:null};
+        // Round 2: designers & contractors bid competitively (sealed bids); design clock starts now
+        s.fees[R].design={bids:{},winner:null,agreed:null,bidStartTs:a.ts};
         s.fees[R].construction={bids:{},winner:null,agreed:null};
       } else {
         // Round 1: single collaborative team, negotiate one fee (preset to fair default)
@@ -385,6 +387,7 @@ function reduce(state, a){
     case 'propose_fee':{ ensureRound(s,R); s.fees[R][a.kind].proposal=a.amount; if(a.plan) s.fees[R][a.kind].plan=a.plan; break; }
     case 'agree_fee':{
       ensureRound(s,R); s.fees[R][a.kind].agreed=a.amount; s.fees[R][a.kind].proposal=a.amount;
+      if(R===2) s.fees[R][a.kind].overMin=bidOverMin(s.fees[R][a.kind].bidStartTs,a.ts,a.bidLimit);
       if(a.kind==='design') s.phase='design';
       else s.phase='construction';
       break;
@@ -399,7 +402,7 @@ function reduce(state, a){
     case 'pick_winner':{                  // Round 2 competitive: client hires one bidder
       ensureRound(s,R);
       const f=s.fees[R][a.kind]; const amt=f.bids&&f.bids[a.playerId];
-      if(amt!=null){ f.winner=a.playerId; f.agreed=amt; s.phase = a.kind==='design'?'design':'construction'; }
+      if(amt!=null){ f.winner=a.playerId; f.agreed=amt; if(R===2) f.overMin=bidOverMin(f.bidStartTs,a.ts,a.bidLimit); s.phase = a.kind==='design'?'design':'construction'; }
       break;
     }
     case 'work_round':{
@@ -420,7 +423,7 @@ function reduce(state, a){
     }
     case 'deliver':{
       ensureRound(s,R);
-      if(a.kind==='design'){ s.design[R].delivered=true; s.phase='contract_bid'; }
+      if(a.kind==='design'){ s.design[R].delivered=true; if(R===2) s.fees[R].construction.bidStartTs=a.ts; s.phase='contract_bid'; }
       else { s.construction[R].delivered=true; computeResult(s,R); s.phase='result'; }
       break;
     }
@@ -446,6 +449,8 @@ function reduce(state, a){
 }
 
 function sum(arr,f){ return arr.reduce((n,x)=>n+f(x),0); }
+// whole minutes a bid ran past its limit (each started minute over counts as 1 ⌛)
+function bidOverMin(startTs,ts,limitMin){ if(!startTs||!ts) return 0; return Math.max(0, Math.ceil((ts-startTs)/60000 - (limitMin||10))); }
 function computeResult(s,R){
   const P=s.params[R]; const dr=s.design[R].rounds, cr=s.construction[R].rounds;
   const designFee=s.fees[R].design.agreed ?? P.designFeeDefault;
@@ -455,11 +460,12 @@ function computeResult(s,R){
   const dBIM=dr.filter(x=>x.tool==='BIM').length, cBIM=cr.filter(x=>x.tool==='BIM').length;
   const bimDiscount=Math.min(dBIM,cBIM)*BIM_DISCOUNT;
   const totalQ=dQ+cQ, totalT=dT+cT;
+  const bidOver=((s.fees[R].design&&s.fees[R].design.overMin)||0)+((s.fees[R].construction&&s.fees[R].construction.overMin)||0);  // bidding-delay ⌛ added to the project
   const designProfit = designFee - dCost - (dT-P.designTimeAllow)*OVERTIME_PEN - dOver;
   const contractorProfit = constructionFee - cCost - (cT-P.constructionTimeAllow)*OVERTIME_PEN - cOver + bimDiscount;
-  const clientProfit = P.budget - (designFee+constructionFee) + totalQ*QUALITY_BONUS - (totalT-P.timeDemand)*OVERTIME_PEN;
+  const clientProfit = P.budget - (designFee+constructionFee) + totalQ*QUALITY_BONUS - (totalT+bidOver-P.timeDemand)*OVERTIME_PEN;
   const designWinner=nameOf(s,s.fees[R].design.winner), contractorWinner=nameOf(s,s.fees[R].construction.winner);
-  s.results[R]={ designFee,constructionFee,dQ,dT,dCost,dOver,cQ,cT,cCost,cOver,bimDiscount,
+  s.results[R]={ designFee,constructionFee,dQ,dT,dCost,dOver,cQ,cT,cCost,cOver,bimDiscount,bidOver,
     totalQ,totalT,designProfit,contractorProfit,clientProfit,designWinner,contractorWinner };
 }
 function nameOf(s,pid){
@@ -477,6 +483,7 @@ const LS_THEME='bimgame_theme';
 
 let me = loadIdentity();            // {playerId,name,role,room} for THIS device
 let ui = { tier:null, tool:null };  // ephemeral per-device selection (not synced)
+let bidTimerIv=null;                // live bidding-countdown interval handle
 
 function loadIdentity(){
   try{ const v=JSON.parse(localStorage.getItem(LS_ID)); if(v&&v.playerId) return v; }catch(e){}
@@ -518,13 +525,14 @@ function normCode(x){ return String(x||'').trim().toUpperCase().replace(/[^A-Z0-
 function normSession(x){ return String(x||'').trim().toUpperCase().replace(/[^A-Z0-9-]/g,'').slice(0,24); }
 function stampCode(dateStr){ const d=dateStr&&!isNaN(new Date(dateStr))?new Date(dateStr):new Date(); const p=n=>String(n).padStart(2,'0'); return ''+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'-'+Math.random().toString(36).slice(2,6).toUpperCase(); }
 
-function hostSession(university,date,groups){
+function hostSession(university,date,groups,bidLimit){
   const code=stampCode(date);
-  DB.ref('sessions/'+code+'/meta').set({university:university||'',date:date||'',groups:groups||9,created:Date.now()}).catch(e=>console.warn('meta write',e));
+  DB.ref('sessions/'+code+'/meta').set({university:university||'',date:date||'',groups:groups||9,bidLimit:bidLimit||10,created:Date.now()}).catch(e=>console.warn('meta write',e));
   me.room=null; me.role=null; saveIdentity();
   enterSession(code);
 }
 function sessionGroups(){ return Math.max(1,Math.min(20,(SESSION_META&&+SESSION_META.groups)||9)); }
+function bidLimitMin(){ return Math.max(1,Math.min(60,(SESSION_META&&+SESSION_META.bidLimit)||10)); }
 function enterSession(code){
   code=normSession(code); if(!code||!DB) return;
   SESSION=code; me.session=code; saveIdentity();
@@ -612,6 +620,7 @@ function isCompetitive(kind){ return STATE.round===2 && !SOLO() && discList(kind
 
 /* ============================ render ====================================== */
 function render(){
+  if(bidTimerIv){ clearInterval(bidTimerIv); bidTimerIv=null; }   // reset any live bid countdown
   const app=$('#app'); app.innerHTML='';
   if(FB && !SESSION){ renderTopExtra(); app.appendChild(Landing()); decorate(); return; }
   if(FB && !ROOM){ renderTopExtra(); app.appendChild(RoomPicker()); decorate(); return; }
@@ -636,6 +645,7 @@ function render(){
     default: app.appendChild(el('div',{class:'card'},'Loading…'));
   }
   app.appendChild(FooterControls());
+  if(STATE.round===2 && (STATE.phase==='design_bid'||STATE.phase==='contract_bid')) startBidClock(STATE.phase==='design_bid'?'design':'construction');
   decorate();
 }
 
@@ -687,7 +697,8 @@ function Landing(){
     const uF=el('label',{class:'field'},'<span>University / school</span>'); const uI=el('input',{type:'text',placeholder:'e.g. National Taiwan University',maxlength:'60'}); uF.appendChild(uI); card.appendChild(uF);
     const dF=el('label',{class:'field'},'<span>Play date</span>'); const dI=el('input',{type:'date'}); dI.value=new Date().toISOString().slice(0,10); dF.appendChild(dI); card.appendChild(dF);
     const gF=el('label',{class:'field'},'<span>Number of groups</span>'); const gI=el('input',{type:'number',min:'1',max:'20',step:'1',value:'9'}); gF.appendChild(gI); card.appendChild(gF);
-    const b=el('button',{class:'btn gold',style:'margin-top:16px'},'Create session ▸'); b.onclick=()=>hostSession(uI.value.trim(),dI.value,Math.max(1,Math.min(20,+gI.value||9))); card.appendChild(b);
+    const tF=el('label',{class:'field'},'<span>Round 2 bidding time limit (minutes per bid)</span>'); const tI=el('input',{type:'number',min:'1',max:'60',step:'1',value:'10'}); tF.appendChild(tI); card.appendChild(tF);
+    const b=el('button',{class:'btn gold',style:'margin-top:16px'},'Create session ▸'); b.onclick=()=>hostSession(uI.value.trim(),dI.value,Math.max(1,Math.min(20,+gI.value||9)),Math.max(1,Math.min(60,+tI.value||10))); card.appendChild(b);
     const back=el('button',{class:'tinylink',style:'display:block;margin:12px auto 0'},'← back'); back.onclick=()=>{ui.landing='choose';render();}; card.appendChild(back);
   } else if(mode==='join'){
     card.innerHTML=`<div class="eyebrow"><span class="step">JOIN</span> Enter a session</div>
@@ -967,6 +978,26 @@ function planText(kind,plan){
   return `${name} + ${plan.tool}, aiming for ${N} round${N>1?'s':''} · expected ≈ ${fmt1(eqR*N)} 👍, ${fmt1(etR*N)} ⌛`;
 }
 
+/* Round 2 live bidding countdown (host-set limit; overrun adds ⌛ to the project) */
+function fmtClock(sec){ const a=Math.abs(Math.round(sec)); return Math.floor(a/60)+':'+String(a%60).padStart(2,'0'); }
+function bidClockEl(kind){
+  if(STATE.round!==2) return null;
+  const f=STATE.fees[STATE.round]&&STATE.fees[STATE.round][kind];
+  if(!f||!f.bidStartTs) return null;
+  return el('div',{class:'bidclock',id:'bidclockwrap'},'<span id="bidclock">⏱ …</span>');
+}
+function startBidClock(kind){
+  const f=STATE.fees[STATE.round]&&STATE.fees[STATE.round][kind]; if(!f||!f.bidStartTs) return;
+  const st=f.bidStartTs, limit=bidLimitMin()*60;
+  const upd=()=>{ const box=document.getElementById('bidclockwrap'), span=document.getElementById('bidclock');
+    if(!span){ if(bidTimerIv){clearInterval(bidTimerIv);bidTimerIv=null;} return; }
+    const rem=limit-(Date.now()-st)/1000;
+    if(rem>=0){ span.textContent='⏱ '+fmtClock(rem)+' left to agree the fee'; box.className='bidclock'; }
+    else { const over=Math.ceil(-rem/60); span.textContent='⏱ +'+fmtClock(rem)+' over — +'+over+' ⌛ added to the project so far'; box.className='bidclock over'; }
+  };
+  upd(); if(bidTimerIv)clearInterval(bidTimerIv); bidTimerIv=setInterval(upd,500);
+}
+
 function BidScreen(kind){
   const R=STATE.round, P=STATE.params[R];
   const isDesign=kind==='design';
@@ -985,6 +1016,7 @@ function BidScreen(kind){
   c.innerHTML=`<div class="eyebrow"><span class="step">${step}</span> ${isDesign?'Hire the design team':'Hire the contractor'}</div>
     <h2>${title}</h2>
     <p class="lede">The ${ROLE_NAME[party]} proposes a fee for their work, and the Client agrees what to pay. Baseline reference $${baseline}.</p>`;
+  { const bc=bidClockEl(kind); if(bc) c.appendChild(bc); }
 
   const cur = fee.proposal ?? baseline;
 
@@ -1004,7 +1036,7 @@ function BidScreen(kind){
     const counter=el('button',{class:'btn'},'Counter-offer');
     counter.onclick=()=>commit({type:'propose_fee',kind,amount:Math.max(0,+inp.value||0)});
     const accept=el('button',{class:'btn role'},'Accept & hire ▸');
-    accept.onclick=()=>commit({type:'agree_fee',kind,amount:Math.max(0,+inp.value||cur)});
+    accept.onclick=()=>commit({type:'agree_fee',kind,amount:Math.max(0,+inp.value||cur),bidLimit:bidLimitMin()});
     row.appendChild(counter); row.appendChild(accept); c.appendChild(row);
   } else {
     return WaitCard(title, `Client and ${ROLE_NAME[party]} are agreeing the fee.`);
@@ -1020,6 +1052,7 @@ function CompetitiveBid(kind,R,P,party,baseline,step,isDesign){
   c.innerHTML=`<div class="eyebrow"><span class="step">${step}</span> Competitive bidding</div>
     <h2>${isDesign?'Design':'Build'} contract — sealed bids</h2>
     <p class="lede">Round 2: the ${isDesign?'designers':'contractors'} compete for the job — each submits their own sealed fee, and the Client hires one. Baseline reference $${baseline}.</p>`;
+  { const bc=bidClockEl(kind); if(bc) c.appendChild(bc); }
 
   if(me.role===party){
     const mine=bids[me.playerId];
@@ -1051,7 +1084,7 @@ function CompetitiveBid(kind,R,P,party,baseline,step,isDesign){
       if(amt!=null){
         right.appendChild(el('span',{class:'mbv',style:'color:var(--money)'},`$${amt}`));
         const hb=el('button',{class:'btn sm role'},'Hire ▸');
-        hb.onclick=()=>commit({type:'pick_winner',kind,playerId:p.playerId});
+        hb.onclick=()=>commit({type:'pick_winner',kind,playerId:p.playerId,bidLimit:bidLimitMin()});
         right.appendChild(hb);
       } else { right.appendChild(el('span',{class:'mbv'},'waiting…')); }
       row.appendChild(right); list.appendChild(row);
@@ -1191,6 +1224,7 @@ function ResultScreen(isFinal){
     <p class="lede">Quality is rewarded, delays are penalised. ${res.bimDiscount?`BIM paid off: the contractor saved $${res.bimDiscount}. `:''}${(res.designWinner||res.contractorWinner)?`Competitive round — ${esc(res.designWinner||'?')} won the design and ${esc(res.contractorWinner||'?')} won the build; the rival bidders earned $0.`:''}</p>
     <div class="kv" style="margin-top:12px"><span class="k">Quality delivered 👍</span><span class="v">${res.totalQ} / ${P.qualityDemand}</span></div>
     <div class="kv"><span class="k">Time taken ⌛</span><span class="v">${res.totalT} / ${P.timeDemand} ${res.totalT>P.timeDemand?'· <span style="color:var(--loss)">'+(res.totalT-P.timeDemand)+' over</span>':'· on time'}</span></div>
+    ${res.bidOver?`<div class="kv"><span class="k">Round 2 bidding overrun ⌛</span><span class="v" style="color:var(--loss)">+${res.bidOver} added to project time</span></div>`:''}
     <div class="kv"><span class="k">Design fee / Build fee</span><span class="v">$${res.designFee} / $${res.constructionFee}</span></div>`;
   c.appendChild(head);
 
@@ -1213,13 +1247,14 @@ function ResultScreen(isFinal){
 
   // breakdown detail — time term is signed: under the allowance = bonus, over = penalty
   const sgn=n=>(n>=0?'+ ':'− ')+'$'+Math.abs(Math.round(n));
-  const cT=(P.timeDemand-res.totalT)*OVERTIME_PEN;
+  const bidOver=res.bidOver||0; const effT=res.totalT+bidOver;
+  const cT=(P.timeDemand-effT)*OVERTIME_PEN;
   const dTt=(P.designTimeAllow-res.dT)*OVERTIME_PEN;
   const kTt=(P.constructionTimeAllow-res.cT)*OVERTIME_PEN;
   const timeTag=n=> n>0?`<span style="color:var(--quality)">${n} ⌛ early</span>`:(n<0?`<span style="color:var(--loss)">${-n} ⌛ over</span>`:'on time');
   const det=el('div',{class:'card'});
   det.innerHTML=`<div class="subhead" style="margin-top:0">Profit breakdown</div>
-    <div class="kv"><span class="k">Client = $${P.budget} − $${res.designFee+res.constructionFee} fees + ${res.totalQ}×$${QUALITY_BONUS} quality ${sgn(cT)} time (${timeTag((P.timeDemand-res.totalT))})</span><span class="v ${res.clientProfit>=0?'pos':'neg'}">${money(res.clientProfit)}</span></div>
+    <div class="kv"><span class="k">Client = $${P.budget} − $${res.designFee+res.constructionFee} fees + ${res.totalQ}×$${QUALITY_BONUS} quality ${sgn(cT)} time (${timeTag((P.timeDemand-effT))}${bidOver?`, incl. +${bidOver} ⌛ bidding delay`:''})</span><span class="v ${res.clientProfit>=0?'pos':'neg'}">${money(res.clientProfit)}</span></div>
     <div class="kv"><span class="k">Design = $${res.designFee} fee − $${res.dCost} spend ${sgn(dTt)} time ${res.dOver?'− $'+res.dOver+' overhead':''}</span><span class="v ${res.designProfit>=0?'pos':'neg'}">${money(res.designProfit)}</span></div>
     <div class="kv"><span class="k">Contractor = $${res.constructionFee} fee − $${res.cCost} spend ${sgn(kTt)} time ${res.cOver?'− $'+res.cOver+' overhead ':''}${res.bimDiscount?'+ $'+res.bimDiscount+' BIM':''}</span><span class="v ${res.contractorProfit>=0?'pos':'neg'}">${money(res.contractorProfit)}</span></div>
     <div class="note" style="margin-top:14px">Finishing under the time allowance earns a bonus; going over costs $${OVERTIME_PEN}/⌛ — exactly as the original scoring sheet computes it.</div>`;
